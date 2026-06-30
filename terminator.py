@@ -14,6 +14,8 @@ Install on Arch:
     sudo pacman -S python-gobject gtk4 libadwaita vte3
 
 Keyboard shortcuts:
+    Ctrl+Shift+C  — copy selection
+    Ctrl+Shift+V  — paste clipboard
     Ctrl+Shift+N  — new window
     Ctrl+Shift+T  — new tab
     Ctrl+Shift+W  — close active pane  (closes tab when last pane)
@@ -114,6 +116,12 @@ class TerminalWidget(Gtk.ScrolledWindow):
     def grab_focus(self) -> None:
         self._vte.grab_focus()
 
+    def copy_clipboard(self) -> None:
+        self._vte.copy_clipboard_format(Vte.Format.TEXT)
+
+    def paste_clipboard(self) -> None:
+        self._vte.paste_clipboard()
+
     @property
     def vte(self) -> Vte.Terminal:
         return self._vte
@@ -122,6 +130,11 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
     def _build_context_menu(self) -> None:
         menu_model = Gio.Menu()
+
+        clipboard_section = Gio.Menu()
+        clipboard_section.append("Copy",  "term.copy")
+        clipboard_section.append("Paste", "term.paste")
+        menu_model.append_section(None, clipboard_section)
 
         tab_section = Gio.Menu()
         tab_section.append("New Window", "term.new-window")
@@ -148,6 +161,15 @@ class TerminalWidget(Gtk.ScrolledWindow):
         popover.set_parent(self._vte)
 
         ag = Gio.SimpleActionGroup()
+
+        copy_action = Gio.SimpleAction.new("copy", None)
+        copy_action.connect("activate", lambda _a, _p: self.copy_clipboard())
+        ag.add_action(copy_action)
+
+        paste_action = Gio.SimpleAction.new("paste", None)
+        paste_action.connect("activate", lambda _a, _p: self.paste_clipboard())
+        ag.add_action(paste_action)
+
         for name, signal in (
             ("new-window",  "new-window"),
             ("new-tab",     "new-tab"),
@@ -630,6 +652,8 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._new_tab()
 
         # ── Keyboard shortcuts ────────────────────────────────────────────────
+        self._add_shortcut("<Control><Shift>c", lambda: self._active_panes().active.copy_clipboard())
+        self._add_shortcut("<Control><Shift>v", lambda: self._active_panes().active.paste_clipboard())
         self._add_shortcut("<Control><Shift>n", lambda: self.get_application().new_window())
         self._add_shortcut("<Control><Shift>t", self._new_tab)
         self._add_shortcut("<Control><Shift>a", lambda: self._active_panes().split_auto())
