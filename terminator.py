@@ -162,6 +162,7 @@ class Settings:
         "cursor_blink":     "system",
         "scrollback_lines": 10_000,
         "bold_is_bright":   False,
+        "pane_titlebar":    "auto",
     }
 
     _instance: "Settings | None" = None
@@ -549,6 +550,14 @@ class PaneManager(Gtk.Box):
         first.terminal.spawn_shell()
         GLib.idle_add(first.terminal.grab_focus)
 
+        pm_ref = weakref.ref(self)
+        def _on_settings_changed():
+            pm = pm_ref()
+            if pm is not None:
+                pm._update_titlebars()
+        Settings.get().connect_changed(_on_settings_changed)
+        self._update_titlebars()
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     @property
@@ -726,9 +735,14 @@ class PaneManager(Gtk.Box):
             GLib.idle_add(active_term.grab_focus)
 
     def _update_titlebars(self) -> None:
-        """Show per-pane title bars when there is more than one pane; hide when solo."""
         frames  = self._collect_frames(self.get_first_child())
-        visible = len(frames) > 1
+        setting = Settings.get().get_value("pane_titlebar")
+        if setting == "always":
+            visible = True
+        elif setting == "never":
+            visible = False
+        else:
+            visible = len(frames) > 1
         active_frame = self._active.get_parent() if self._active else None
         for frame in frames:
             if visible:
@@ -1087,6 +1101,15 @@ class PreferencesWindow(Adw.PreferencesWindow):
             lambda w: s.set_value("scrollback_lines", int(w.get_value())))
         scroll_row.add_suffix(scroll_spin)
         terminal_group.add(scroll_row)
+
+        titlebar_row = Adw.ComboRow()
+        titlebar_row.set_title("Pane Titlebar")
+        titlebar_row.set_subtitle("Show the title bar above each terminal pane")
+        titlebar_row.set_model(Gtk.StringList.new(["Automatic", "Always", "Never"]))
+        titlebar_row.set_selected({"auto": 0, "always": 1, "never": 2}.get(s.get_value("pane_titlebar"), 0))
+        titlebar_row.connect("notify::selected",
+            lambda r, _: s.set_value("pane_titlebar", ["auto", "always", "never"][r.get_selected()]))
+        terminal_group.add(titlebar_row)
 
         bold_row = Adw.ActionRow()
         bold_row.set_title("Bold Is Bright")
