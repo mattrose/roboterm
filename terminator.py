@@ -14,6 +14,7 @@ Install on Arch:
     sudo pacman -S python-gobject gtk4 libadwaita vte3
 
 Keyboard shortcuts:
+    Ctrl+,        — preferences
     Ctrl+Shift+C  — copy selection
     Ctrl+Shift+V  — paste clipboard
     Ctrl+Shift+N  — new window
@@ -36,10 +37,99 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Vte", "3.91")
 
-from gi.repository import Gtk, Adw, Vte, GLib, GObject, Gdk, Gio
+from gi.repository import Gtk, Adw, Vte, GLib, GObject, Gdk, Gio, Pango
+import json
 import os
+import weakref
 
 Adw.init()
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+def _rgba_to_hex(rgba: Gdk.RGBA) -> str:
+    return "#{:02x}{:02x}{:02x}".format(
+        round(rgba.red * 255),
+        round(rgba.green * 255),
+        round(rgba.blue * 255),
+    )
+
+
+class Settings:
+    CONFIG_PATH = os.path.expanduser("~/.config/roboterm/settings.json")
+
+    DEFAULTS: dict = {
+        "font":             "Monospace 12",
+        "foreground":       "#ffffff",
+        "background":       "#1e1e1e",
+        "cursor_shape":     "block",
+        "cursor_blink":     "system",
+        "scrollback_lines": 10_000,
+        "bold_is_bright":   False,
+    }
+
+    _instance: "Settings | None" = None
+
+    @classmethod
+    def get(cls) -> "Settings":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def __init__(self) -> None:
+        self._data: dict = dict(self.DEFAULTS)
+        self._listeners: list = []
+        self._load()
+
+    def _load(self) -> None:
+        try:
+            with open(self.CONFIG_PATH) as f:
+                saved = json.load(f)
+            self._data.update({k: v for k, v in saved.items() if k in self.DEFAULTS})
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            pass
+
+    def save(self) -> None:
+        os.makedirs(os.path.dirname(self.CONFIG_PATH), exist_ok=True)
+        with open(self.CONFIG_PATH, "w") as f:
+            json.dump(self._data, f, indent=2)
+
+    def get_value(self, key: str):
+        return self._data[key]
+
+    def set_value(self, key: str, value) -> None:
+        self._data[key] = value
+        self.save()
+        for cb in self._listeners:
+            cb()
+
+    def connect_changed(self, cb) -> None:
+        self._listeners.append(cb)
+
+    def apply_to_vte(self, vte: Vte.Terminal) -> None:
+        vte.set_font(Pango.FontDescription.from_string(self._data["font"]))
+
+        fg = Gdk.RGBA()
+        fg.parse(self._data["foreground"])
+        bg = Gdk.RGBA()
+        bg.parse(self._data["background"])
+        vte.set_color_foreground(fg)
+        vte.set_color_background(bg)
+
+        vte.set_cursor_shape({
+            "block":     Vte.CursorShape.BLOCK,
+            "ibeam":     Vte.CursorShape.IBEAM,
+            "underline": Vte.CursorShape.UNDERLINE,
+        }.get(self._data["cursor_shape"], Vte.CursorShape.BLOCK))
+
+        vte.set_cursor_blink_mode({
+            "system": Vte.CursorBlinkMode.SYSTEM,
+            "on":     Vte.CursorBlinkMode.ON,
+            "off":    Vte.CursorBlinkMode.OFF,
+        }.get(self._data["cursor_blink"], Vte.CursorBlinkMode.SYSTEM))
+
+        vte.set_scrollback_lines(self._data["scrollback_lines"])
+        vte.set_bold_is_bright(self._data["bold_is_bright"])
 
 
 # ── TerminalWidget ─────────────────────────────────────────────────────────────
@@ -68,7 +158,7 @@ class TerminalWidget(Gtk.ScrolledWindow):
         "rotate-ccw":    (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
-    def __init__(self, scrollback_lines: int = 10_000):
+    def __init__(self):
         super().__init__()
 
         self.set_vexpand(True)
@@ -76,9 +166,17 @@ class TerminalWidget(Gtk.ScrolledWindow):
         self.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.ALWAYS)
 
         self._vte = Vte.Terminal()
-        self._vte.set_scrollback_lines(scrollback_lines)
         self._vte.set_mouse_autohide(True)
         self.set_child(self._vte)
+
+        settings = Settings.get()
+        settings.apply_to_vte(self._vte)
+        vte_ref = weakref.ref(self._vte)
+        def _on_settings_changed():
+            vte = vte_ref()
+            if vte is not None:
+                settings.apply_to_vte(vte)
+        settings.connect_changed(_on_settings_changed)
 
         self._vte.connect("child-exited", self._on_child_exited)
 
@@ -632,6 +730,10 @@ class TerminalWindow(Adw.ApplicationWindow):
         close_section.append("Close Pane", "win.close-pane")
         menu_model.append_section(None, close_section)
 
+        prefs_section = Gio.Menu()
+        prefs_section.append("Preferences", "win.preferences")
+        menu_model.append_section(None, prefs_section)
+
         # Register SimpleActions on this window
         win_actions = {
             "new-window":  lambda: self.get_application().new_window(),
@@ -642,6 +744,7 @@ class TerminalWindow(Adw.ApplicationWindow):
             "rotate-cw":   lambda: self._active_panes().rotate_cw(),
             "rotate-ccw":  lambda: self._active_panes().rotate_ccw(),
             "close-pane":  lambda: self._active_panes().close_active(),
+            "preferences": lambda: self._open_preferences(),
         }
         for name, cb in win_actions.items():
             action = Gio.SimpleAction.new(name, None)
@@ -669,6 +772,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._new_tab()
 
         # ── Keyboard shortcuts ────────────────────────────────────────────────
+        self._add_shortcut("<Control>comma",     self._open_preferences)
         self._add_shortcut("<Control><Shift>n", lambda: self.get_application().new_window())
         self._add_shortcut("<Control><Shift>t", self._new_tab)
         self._add_shortcut("<Control><Shift>a", lambda: self._active_panes().split_auto())
@@ -723,6 +827,9 @@ class TerminalWindow(Adw.ApplicationWindow):
     def _update_tab_bar_visibility(self) -> None:
         self._notebook.set_show_tabs(self._notebook.get_n_pages() > 1)
 
+    def _open_preferences(self) -> None:
+        PreferencesWindow(transient_for=self).present()
+
     # ── Shortcuts ─────────────────────────────────────────────────────────────
 
     def _add_shortcut(self, accel: str, cb) -> None:
@@ -733,6 +840,107 @@ class TerminalWindow(Adw.ApplicationWindow):
         ctrl.set_scope(Gtk.ShortcutScope.GLOBAL)
         ctrl.add_shortcut(shortcut)
         self.add_controller(ctrl)
+
+
+# ── PreferencesWindow ─────────────────────────────────────────────────────────
+
+class PreferencesWindow(Adw.PreferencesWindow):
+    def __init__(self, transient_for=None):
+        super().__init__()
+        self.set_title("Preferences")
+        self.set_default_size(480, 560)
+        if transient_for:
+            self.set_transient_for(transient_for)
+            self.set_modal(False)
+
+        s = Settings.get()
+        page = Adw.PreferencesPage()
+        self.add(page)
+
+        # ── Appearance ────────────────────────────────────────────────────────
+        appearance = Adw.PreferencesGroup()
+        appearance.set_title("Appearance")
+        page.add(appearance)
+
+        font_row = Adw.ActionRow()
+        font_row.set_title("Font")
+        font_btn = Gtk.FontDialogButton(dialog=Gtk.FontDialog())
+        font_btn.set_valign(Gtk.Align.CENTER)
+        font_btn.set_font_desc(Pango.FontDescription.from_string(s.get_value("font")))
+        font_btn.connect("notify::font-desc",
+            lambda btn, _: s.set_value("font", btn.get_font_desc().to_string()))
+        font_row.add_suffix(font_btn)
+        font_row.set_activatable_widget(font_btn)
+        appearance.add(font_row)
+
+        # ── Colors ────────────────────────────────────────────────────────────
+        colors = Adw.PreferencesGroup()
+        colors.set_title("Colors")
+        page.add(colors)
+
+        for label, key in (("Text", "foreground"), ("Background", "background")):
+            row = Adw.ActionRow()
+            row.set_title(label)
+            btn = Gtk.ColorDialogButton(dialog=Gtk.ColorDialog())
+            btn.set_valign(Gtk.Align.CENTER)
+            rgba = Gdk.RGBA()
+            rgba.parse(s.get_value(key))
+            btn.set_rgba(rgba)
+            btn.connect("notify::rgba",
+                lambda b, _, k=key: s.set_value(k, _rgba_to_hex(b.get_rgba())))
+            row.add_suffix(btn)
+            row.set_activatable_widget(btn)
+            colors.add(row)
+
+        # ── Cursor ────────────────────────────────────────────────────────────
+        cursor_group = Adw.PreferencesGroup()
+        cursor_group.set_title("Cursor")
+        page.add(cursor_group)
+
+        shape_row = Adw.ComboRow()
+        shape_row.set_title("Shape")
+        shape_row.set_model(Gtk.StringList.new(["Block", "I-Beam", "Underline"]))
+        shape_row.set_selected({"block": 0, "ibeam": 1, "underline": 2}.get(s.get_value("cursor_shape"), 0))
+        shape_row.connect("notify::selected",
+            lambda r, _: s.set_value("cursor_shape", ["block", "ibeam", "underline"][r.get_selected()]))
+        cursor_group.add(shape_row)
+
+        blink_row = Adw.ComboRow()
+        blink_row.set_title("Blink")
+        blink_row.set_model(Gtk.StringList.new(["System Default", "Always On", "Always Off"]))
+        blink_row.set_selected({"system": 0, "on": 1, "off": 2}.get(s.get_value("cursor_blink"), 0))
+        blink_row.connect("notify::selected",
+            lambda r, _: s.set_value("cursor_blink", ["system", "on", "off"][r.get_selected()]))
+        cursor_group.add(blink_row)
+
+        # ── Terminal ──────────────────────────────────────────────────────────
+        terminal_group = Adw.PreferencesGroup()
+        terminal_group.set_title("Terminal")
+        page.add(terminal_group)
+
+        scroll_row = Adw.ActionRow()
+        scroll_row.set_title("Scrollback Lines")
+        scroll_adj = Gtk.Adjustment(value=s.get_value("scrollback_lines"),
+                                    lower=100, upper=1_000_000,
+                                    step_increment=1_000, page_increment=10_000)
+        scroll_spin = Gtk.SpinButton(adjustment=scroll_adj, digits=0)
+        scroll_spin.set_valign(Gtk.Align.CENTER)
+        scroll_spin.connect("value-changed",
+            lambda w: s.set_value("scrollback_lines", int(w.get_value())))
+        scroll_row.add_suffix(scroll_spin)
+        terminal_group.add(scroll_row)
+
+        bold_row = Adw.ActionRow()
+        bold_row.set_title("Bold Is Bright")
+        bold_row.set_subtitle("Show bold text in bright color variants")
+        bold_switch = Gtk.Switch()
+        bold_switch.set_valign(Gtk.Align.CENTER)
+        bold_switch.set_active(s.get_value("bold_is_bright"))
+        bold_switch.connect("notify::active",
+            lambda w, _: s.set_value("bold_is_bright", w.get_active()))
+        bold_row.add_suffix(bold_switch)
+        bold_row.set_activatable_widget(bold_switch)
+        terminal_group.add(bold_row)
 
 
 # ── TerminalApp ───────────────────────────────────────────────────────────────
