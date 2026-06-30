@@ -1,4 +1,6 @@
-from gi.repository import Gtk, Adw, Gdk, Gio
+import signal
+
+from gi.repository import Gtk, Adw, Gdk, Gio, GLib
 
 from .window import TerminalWindow
 
@@ -10,6 +12,7 @@ class TerminalApp(Adw.Application):
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
         self.connect("activate", self._on_activate)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self.quit)
 
     def new_window(self) -> None:
         win = TerminalWindow(self)
