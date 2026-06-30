@@ -86,6 +86,11 @@ class TerminalWidget(Gtk.ScrolledWindow):
         focus_ctrl.connect("enter", lambda _ec: self.emit("focus-grabbed"))
         self._vte.add_controller(focus_ctrl)
 
+        key_ctrl = Gtk.EventControllerKey()
+        key_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        key_ctrl.connect("key-pressed", self._on_key_pressed)
+        self._vte.add_controller(key_ctrl)
+
         self._build_context_menu()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -192,6 +197,18 @@ class TerminalWidget(Gtk.ScrolledWindow):
         self._vte.add_controller(gesture)
 
         self._popover = popover
+
+    def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
+        mods = state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
+                        | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK)
+        if mods == (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK):
+            if keyval in (Gdk.KEY_c, Gdk.KEY_C):
+                self.copy_clipboard()
+                return True
+            if keyval in (Gdk.KEY_v, Gdk.KEY_V):
+                self.paste_clipboard()
+                return True
+        return False
 
     def _on_right_click(self, gesture, _n_press, x, y, popover) -> None:
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
@@ -652,8 +669,6 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._new_tab()
 
         # ── Keyboard shortcuts ────────────────────────────────────────────────
-        self._add_shortcut("<Control><Shift>c", lambda: self._active_panes().active.copy_clipboard())
-        self._add_shortcut("<Control><Shift>v", lambda: self._active_panes().active.paste_clipboard())
         self._add_shortcut("<Control><Shift>n", lambda: self.get_application().new_window())
         self._add_shortcut("<Control><Shift>t", self._new_tab)
         self._add_shortcut("<Control><Shift>a", lambda: self._active_panes().split_auto())
