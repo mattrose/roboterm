@@ -1,7 +1,10 @@
 import os
+import sys
 import weakref
 
 from gi.repository import Gtk, Vte, GLib, GObject, Gdk, Gio
+
+_MACOS = sys.platform == "darwin"
 
 from .settings import Settings
 
@@ -170,8 +173,12 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
     def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
         mods = state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
-                        | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK)
-        if mods == (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK):
+                        | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.META_MASK)
+        if _MACOS:
+            copy_paste_mod = Gdk.ModifierType.META_MASK
+        else:
+            copy_paste_mod = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
+        if mods == copy_paste_mod:
             if keyval in (Gdk.KEY_c, Gdk.KEY_C):
                 self.copy_clipboard()
                 return True

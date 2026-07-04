@@ -1,7 +1,15 @@
+import sys
+
 from gi.repository import Gtk, Adw, GObject, Gio
 
 from .panes import PaneManager
 from .preferences import PreferencesWindow
+
+_MACOS = sys.platform == "darwin"
+
+
+def _k(linux: str, mac: str) -> str:
+    return mac if _MACOS else linux
 
 
 class TabLabel(Gtk.Box):
@@ -96,17 +104,17 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._tab_count = 0
         self._new_tab()
 
-        self._add_shortcut("<Control>comma",              self._open_preferences)
-        self._add_shortcut("<Control><Shift>n",           lambda: self.get_application().new_window())
-        self._add_shortcut("<Control><Shift>t",           self._new_tab)
-        self._add_shortcut("<Control><Shift>a",           lambda: self._active_panes().split_auto())
-        self._add_shortcut("<Control><Shift>e",           lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL))
-        self._add_shortcut("<Control><Shift>o",           lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL))
-        self._add_shortcut("<Control><Shift>bracketright",lambda: self._active_panes().rotate_cw())
-        self._add_shortcut("<Control><Shift>bracketleft", lambda: self._active_panes().rotate_ccw())
-        self._add_shortcut("<Control><Shift>w",           lambda: self._active_panes().close_active())
-        self._add_shortcut("<Control>Page_Up",            lambda: self._notebook.prev_page())
-        self._add_shortcut("<Control>Page_Down",          lambda: self._notebook.next_page())
+        self._add_shortcut(_k("<Control>comma",               "<Meta>comma"),               self._open_preferences)
+        self._add_shortcut(_k("<Control><Shift>n",            "<Meta>n"),                   lambda: self.get_application().new_window())
+        self._add_shortcut(_k("<Control><Shift>t",            "<Meta>t"),                   self._new_tab)
+        self._add_shortcut(_k("<Control><Shift>a",            "<Meta><Shift>a"),            lambda: self._active_panes().split_auto())
+        self._add_shortcut(_k("<Control><Shift>e",            "<Meta><Shift>e"),            lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL))
+        self._add_shortcut(_k("<Control><Shift>o",            "<Meta><Shift>o"),            lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL))
+        self._add_shortcut(_k("<Control><Shift>bracketright", "<Meta><Alt>bracketright"),   lambda: self._active_panes().rotate_cw())
+        self._add_shortcut(_k("<Control><Shift>bracketleft",  "<Meta><Alt>bracketleft"),    lambda: self._active_panes().rotate_ccw())
+        self._add_shortcut(_k("<Control><Shift>w",            "<Meta>w"),                   lambda: self._active_panes().close_active())
+        self._add_shortcut(_k("<Control>Page_Up",             "<Meta><Shift>bracketleft"),  lambda: self._notebook.prev_page())
+        self._add_shortcut(_k("<Control>Page_Down",           "<Meta><Shift>bracketright"), lambda: self._notebook.next_page())
 
     # ── Tab management ────────────────────────────────────────────────────────
 
