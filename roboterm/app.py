@@ -71,20 +71,15 @@ class TerminalApp(Adw.Application):
         # ── Menu structure ───────────────────────────────────────────────────
         menubar = Gio.Menu()
 
-        # Roboterm — first submenu becomes the macOS application menu
-        app_menu = Gio.Menu()
-        app_menu.append("Settings", "win.preferences")
-        quit_sec = Gio.Menu()
-        quit_sec.append("Quit Roboterm", "app.quit")
-        app_menu.append_section(None, quit_sec)
-        menubar.append_submenu("Roboterm", app_menu)
-
-        # File
+        # File (Settings lives here — avoids duplicating the macOS app menu)
         file_menu = Gio.Menu()
         new_sec = Gio.Menu()
         new_sec.append("New Window", "app.new-window")
         new_sec.append("New Tab",    "win.new-tab")
         file_menu.append_section(None, new_sec)
+        settings_sec = Gio.Menu()
+        settings_sec.append("Settings", "win.preferences")
+        file_menu.append_section(None, settings_sec)
         close_sec = Gio.Menu()
         close_sec.append("Close", "win.close-pane")
         file_menu.append_section(None, close_sec)
