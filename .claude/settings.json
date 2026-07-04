@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(screencapture *)",
+      "Bash(open /Users/mattrose/Code/claude/roboterm/Roboterm.app)"
+    ]
+  }
+}
