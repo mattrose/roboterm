@@ -9,7 +9,7 @@ PY_PREFIX = $(shell /opt/homebrew/bin/python3.13-config --prefix)
 PY_INC    = $(PY_PREFIX)/include/python3.13
 PY_LIB    = $(PY_PREFIX)/lib/libpython3.13.dylib
 
-app: $(APP)
+app: clean $(APP)
 
 $(APP): roboterm.py $(PY_FILES) macos/launcher.c macos/Info.plist macos/create_icon.py
 	rm -rf $@
