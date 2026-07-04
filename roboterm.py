@@ -3,7 +3,7 @@
 roboterm — GTK4/VTE terminal emulator.
 
 Keyboard shortcuts (Linux / macOS):
-    Ctrl+,  / Cmd+,         — preferences
+    Ctrl+,  / Cmd+,         — settings
     Ctrl+Shift+C / Cmd+C    — copy selection
     Ctrl+Shift+V / Cmd+V    — paste clipboard
     Ctrl+Shift+N / Cmd+N    — new window

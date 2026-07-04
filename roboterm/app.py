@@ -73,9 +73,7 @@ class TerminalApp(Adw.Application):
 
         # Roboterm — first submenu becomes the macOS application menu
         app_menu = Gio.Menu()
-        prefs_sec = Gio.Menu()
-        prefs_sec.append("Preferences", "win.preferences")
-        app_menu.append_section(None, prefs_sec)
+        app_menu.append("Settings", "win.preferences")
         quit_sec = Gio.Menu()
         quit_sec.append("Quit Roboterm", "app.quit")
         app_menu.append_section(None, quit_sec)
