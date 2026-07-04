@@ -1,15 +1,11 @@
 import sys
 
-from gi.repository import Gtk, Adw, GObject, Gio
+from gi.repository import Gtk, Adw, GObject, Gio, Gdk
 
 from .panes import PaneManager
 from .preferences import PreferencesWindow
 
 _MACOS = sys.platform == "darwin"
-
-
-def _k(linux: str, mac: str) -> str:
-    return mac if _MACOS else linux
 
 
 class TabLabel(Gtk.Box):
@@ -104,17 +100,20 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._tab_count = 0
         self._new_tab()
 
-        self._add_shortcut(_k("<Control>comma",               "<Meta>comma"),               self._open_preferences)
-        self._add_shortcut(_k("<Control><Shift>n",            "<Meta>n"),                   lambda: self.get_application().new_window())
-        self._add_shortcut(_k("<Control><Shift>t",            "<Meta>t"),                   self._new_tab)
-        self._add_shortcut(_k("<Control><Shift>a",            "<Meta><Shift>a"),            lambda: self._active_panes().split_auto())
-        self._add_shortcut(_k("<Control><Shift>e",            "<Meta><Shift>e"),            lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL))
-        self._add_shortcut(_k("<Control><Shift>o",            "<Meta><Shift>o"),            lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL))
-        self._add_shortcut(_k("<Control><Shift>bracketright", "<Meta><Alt>bracketright"),   lambda: self._active_panes().rotate_cw())
-        self._add_shortcut(_k("<Control><Shift>bracketleft",  "<Meta><Alt>bracketleft"),    lambda: self._active_panes().rotate_ccw())
-        self._add_shortcut(_k("<Control><Shift>w",            "<Meta>w"),                   lambda: self._active_panes().close_active())
-        self._add_shortcut(_k("<Control>Page_Up",             "<Meta><Shift>bracketleft"),  lambda: self._notebook.prev_page())
-        self._add_shortcut(_k("<Control>Page_Down",           "<Meta><Shift>bracketright"), lambda: self._notebook.next_page())
+        if _MACOS:
+            self._setup_macos_key_handler()
+        else:
+            self._add_shortcut("<Control>comma",               self._open_preferences)
+            self._add_shortcut("<Control><Shift>n",            lambda: self.get_application().new_window())
+            self._add_shortcut("<Control><Shift>t",            self._new_tab)
+            self._add_shortcut("<Control><Shift>a",            lambda: self._active_panes().split_auto())
+            self._add_shortcut("<Control><Shift>e",            lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL))
+            self._add_shortcut("<Control><Shift>o",            lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL))
+            self._add_shortcut("<Control><Shift>bracketright", lambda: self._active_panes().rotate_cw())
+            self._add_shortcut("<Control><Shift>bracketleft",  lambda: self._active_panes().rotate_ccw())
+            self._add_shortcut("<Control><Shift>w",            lambda: self._active_panes().close_active())
+            self._add_shortcut("<Control>Page_Up",             lambda: self._notebook.prev_page())
+            self._add_shortcut("<Control>Page_Down",           lambda: self._notebook.next_page())
 
     # ── Tab management ────────────────────────────────────────────────────────
 
@@ -163,6 +162,60 @@ class TerminalWindow(Adw.ApplicationWindow):
         PreferencesWindow(transient_for=self).present()
 
     # ── Shortcuts ─────────────────────────────────────────────────────────────
+
+    def _setup_macos_key_handler(self) -> None:
+        """
+        On macOS, GTK ShortcutController (even GLOBAL scope) doesn't reliably
+        fire when VTE has focus. Instead, attach a CAPTURE-phase key controller
+        directly to the window so we intercept events before VTE sees them.
+        """
+        ctrl = Gtk.EventControllerKey()
+        ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        ctrl.connect("key-pressed", self._on_macos_key_pressed)
+        self.add_controller(ctrl)
+
+    def _on_macos_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
+        mods = state & (Gdk.ModifierType.META_MASK | Gdk.ModifierType.SHIFT_MASK |
+                        Gdk.ModifierType.ALT_MASK  | Gdk.ModifierType.CONTROL_MASK)
+        M  = Gdk.ModifierType.META_MASK
+        MS = Gdk.ModifierType.META_MASK | Gdk.ModifierType.SHIFT_MASK
+        MA = Gdk.ModifierType.META_MASK | Gdk.ModifierType.ALT_MASK
+
+        if mods == M:
+            if keyval == Gdk.KEY_comma:
+                self._open_preferences(); return True
+            if keyval in (Gdk.KEY_n, Gdk.KEY_N):
+                self.get_application().new_window(); return True
+            if keyval in (Gdk.KEY_t, Gdk.KEY_T):
+                self._new_tab(); return True
+            if keyval in (Gdk.KEY_w, Gdk.KEY_W):
+                if p := self._active_panes(): p.close_active()
+                return True
+
+        if mods == MS:
+            if keyval in (Gdk.KEY_a, Gdk.KEY_A):
+                if p := self._active_panes(): p.split_auto()
+                return True
+            if keyval in (Gdk.KEY_e, Gdk.KEY_E):
+                if p := self._active_panes(): p.split_active(Gtk.Orientation.HORIZONTAL)
+                return True
+            if keyval in (Gdk.KEY_o, Gdk.KEY_O):
+                if p := self._active_panes(): p.split_active(Gtk.Orientation.VERTICAL)
+                return True
+            if keyval == Gdk.KEY_bracketleft:
+                self._notebook.prev_page(); return True
+            if keyval == Gdk.KEY_bracketright:
+                self._notebook.next_page(); return True
+
+        if mods == MA:
+            if keyval == Gdk.KEY_bracketright:
+                if p := self._active_panes(): p.rotate_cw()
+                return True
+            if keyval == Gdk.KEY_bracketleft:
+                if p := self._active_panes(): p.rotate_ccw()
+                return True
+
+        return False
 
     def _add_shortcut(self, accel: str, cb) -> None:
         trigger  = Gtk.ShortcutTrigger.parse_string(accel)
