@@ -100,6 +100,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._tab_count = 0
         self._new_tab()
 
+        self._setup_window_actions()
         if _MACOS:
             self._setup_macos_key_handler()
         else:
@@ -160,6 +161,42 @@ class TerminalWindow(Adw.ApplicationWindow):
 
     def _open_preferences(self) -> None:
         PreferencesWindow(transient_for=self).present()
+
+    # ── Actions (used by macOS menu bar) ─────────────────────────────────────
+
+    def _setup_window_actions(self) -> None:
+        def add(name, cb):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda *_: cb())
+            self.add_action(action)
+
+        def with_panes(cb):
+            def fn():
+                if p := self._active_panes():
+                    cb(p)
+            return fn
+
+        add("new-tab",     self._new_tab)
+        add("close-pane",  with_panes(lambda p: p.close_active()))
+        add("preferences", self._open_preferences)
+        add("split-right", with_panes(lambda p: p.split_active(Gtk.Orientation.HORIZONTAL)))
+        add("split-down",  with_panes(lambda p: p.split_active(Gtk.Orientation.VERTICAL)))
+        add("split-auto",  with_panes(lambda p: p.split_auto()))
+        add("rotate-cw",   with_panes(lambda p: p.rotate_cw()))
+        add("rotate-ccw",  with_panes(lambda p: p.rotate_ccw()))
+        add("prev-tab",    self._notebook.prev_page)
+        add("next-tab",    self._notebook.next_page)
+
+        def _copy():
+            if (p := self._active_panes()) and p.active:
+                p.active.copy_clipboard()
+
+        def _paste():
+            if (p := self._active_panes()) and p.active:
+                p.active.paste_clipboard()
+
+        add("copy",  _copy)
+        add("paste", _paste)
 
     # ── Shortcuts ─────────────────────────────────────────────────────────────
 

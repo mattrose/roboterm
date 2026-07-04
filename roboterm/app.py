@@ -1,8 +1,11 @@
 import signal
+import sys
 
 from gi.repository import Gtk, Adw, Gdk, Gio, GLib
 
 from .window import TerminalWindow
+
+_MACOS = sys.platform == "darwin"
 
 
 class TerminalApp(Adw.Application):
@@ -40,4 +43,80 @@ class TerminalApp(Adw.Application):
             css_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
+        if _MACOS:
+            self._setup_menubar()
         self.new_window()
+
+    def _setup_menubar(self) -> None:
+        # ── App-level action ─────────────────────────────────────────────────
+        new_win = Gio.SimpleAction.new("new-window", None)
+        new_win.connect("activate", lambda *_: self.new_window())
+        self.add_action(new_win)
+
+        # Accelerators — displayed in menu labels; key handling is the CAPTURE handler
+        self.set_accels_for_action("win.preferences",  ["<Meta>comma"])
+        self.set_accels_for_action("app.new-window",   ["<Meta>n"])
+        self.set_accels_for_action("win.new-tab",      ["<Meta>t"])
+        self.set_accels_for_action("win.close-pane",   ["<Meta>w"])
+        self.set_accels_for_action("win.copy",         ["<Meta>c"])
+        self.set_accels_for_action("win.paste",        ["<Meta>v"])
+        self.set_accels_for_action("win.split-right",  ["<Meta><Shift>e"])
+        self.set_accels_for_action("win.split-down",   ["<Meta><Shift>o"])
+        self.set_accels_for_action("win.split-auto",   ["<Meta><Shift>a"])
+        self.set_accels_for_action("win.rotate-cw",    ["<Meta><Alt>bracketright"])
+        self.set_accels_for_action("win.rotate-ccw",   ["<Meta><Alt>bracketleft"])
+        self.set_accels_for_action("win.prev-tab",     ["<Meta><Shift>bracketleft"])
+        self.set_accels_for_action("win.next-tab",     ["<Meta><Shift>bracketright"])
+
+        # ── Menu structure ───────────────────────────────────────────────────
+        menubar = Gio.Menu()
+
+        # Roboterm — first submenu becomes the macOS application menu
+        app_menu = Gio.Menu()
+        prefs_sec = Gio.Menu()
+        prefs_sec.append("Preferences", "win.preferences")
+        app_menu.append_section(None, prefs_sec)
+        quit_sec = Gio.Menu()
+        quit_sec.append("Quit Roboterm", "app.quit")
+        app_menu.append_section(None, quit_sec)
+        menubar.append_submenu("Roboterm", app_menu)
+
+        # File
+        file_menu = Gio.Menu()
+        new_sec = Gio.Menu()
+        new_sec.append("New Window", "app.new-window")
+        new_sec.append("New Tab",    "win.new-tab")
+        file_menu.append_section(None, new_sec)
+        close_sec = Gio.Menu()
+        close_sec.append("Close", "win.close-pane")
+        file_menu.append_section(None, close_sec)
+        menubar.append_submenu("File", file_menu)
+
+        # Edit
+        edit_menu = Gio.Menu()
+        edit_menu.append("Copy",  "win.copy")
+        edit_menu.append("Paste", "win.paste")
+        menubar.append_submenu("Edit", edit_menu)
+
+        # View
+        view_menu = Gio.Menu()
+        split_sec = Gio.Menu()
+        split_sec.append("Split Right", "win.split-right")
+        split_sec.append("Split Down",  "win.split-down")
+        split_sec.append("Split Auto",  "win.split-auto")
+        view_menu.append_section(None, split_sec)
+        rotate_sec = Gio.Menu()
+        rotate_sec.append("Rotate Clockwise",         "win.rotate-cw")
+        rotate_sec.append("Rotate Counter-Clockwise", "win.rotate-ccw")
+        view_menu.append_section(None, rotate_sec)
+        menubar.append_submenu("View", view_menu)
+
+        # Window
+        win_menu = Gio.Menu()
+        tab_sec = Gio.Menu()
+        tab_sec.append("Previous Tab", "win.prev-tab")
+        tab_sec.append("Next Tab",     "win.next-tab")
+        win_menu.append_section(None, tab_sec)
+        menubar.append_submenu("Window", win_menu)
+
+        self.set_menubar(menubar)
