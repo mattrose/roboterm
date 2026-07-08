@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
     const char *brew = (access("/opt/homebrew/bin/python3.13", F_OK) == 0)
                        ? "/opt/homebrew" : "/usr/local";
 
-    /* ── GTK4 environment ── */
+    /* ── GTK4 environment (safe to inherit — GTK needs them at runtime) ── */
     char buf[2048];
     snprintf(buf, sizeof(buf), "%s/share:/usr/share", brew);
     prepend_env("XDG_DATA_DIRS", buf);
@@ -51,19 +51,9 @@ int main(int argc, char *argv[]) {
     snprintf(buf, sizeof(buf), "%s/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache", brew);
     setenv("GDK_PIXBUF_MODULE_FILE", buf, 0);
 
-    /* GTK4 dylibs - gi typelibs dlopen these by bare name */
+    /* GTK4 dylibs — gi typelibs dlopen these by bare name */
     snprintf(buf, sizeof(buf), "%s/lib", brew);
     prepend_env("DYLD_LIBRARY_PATH", buf);
-
-    /* ── Python stdlib ── */
-    snprintf(buf, sizeof(buf),
-        "%s/opt/python@3.13/Frameworks/Python.framework/Versions/3.13", brew);
-    setenv("PYTHONHOME", buf, 0);
-
-    /* Ensure our Resources/ and the Homebrew site-packages are on sys.path */
-    snprintf(buf, sizeof(buf),
-        "%s:%s/lib/python3.13/site-packages", resources, brew);
-    prepend_env("PYTHONPATH", buf);
 
     /* ── Embed Python and run the script ── */
     PyConfig config;
@@ -71,15 +61,30 @@ int main(int argc, char *argv[]) {
     config.isolated = 0;
     config.use_environment = 1;
 
+    /*
+     * Set PYTHONHOME and PYTHONPATH via PyConfig rather than setenv() so
+     * these variables are never placed in the process environment and cannot
+     * leak into shells spawned by VTE.
+     */
+    snprintf(buf, sizeof(buf),
+        "%s/opt/python@3.13/Frameworks/Python.framework/Versions/3.13", brew);
+    wchar_t *whome = Py_DecodeLocale(buf, NULL);
+    PyConfig_SetString(&config, &config.home, whome);
+    PyMem_RawFree(whome);
+
+    char pypath[4096];
+    snprintf(pypath, sizeof(pypath),
+        "%s:%s/lib/python3.13/site-packages", resources, brew);
+    wchar_t *wpypath = Py_DecodeLocale(pypath, NULL);
+    PyConfig_SetString(&config, &config.pythonpath_env, wpypath);
+    PyMem_RawFree(wpypath);
+
     /* Run as: python roboterm.py */
     wchar_t *wscript = Py_DecodeLocale(script, NULL);
     PyConfig_SetString(&config, &config.run_filename, wscript);
     PyMem_RawFree(wscript);
 
-    /* argv[0] = script path so sys.argv[0] is right */
-    wchar_t *wargv0 = Py_DecodeLocale(script, NULL);
     PyConfig_SetBytesArgv(&config, argc, argv);
-    PyMem_RawFree(wargv0);
 
     PyStatus status = Py_InitializeFromConfig(&config);
     if (PyStatus_Exception(status)) {
