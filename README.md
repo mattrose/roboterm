@@ -41,33 +41,33 @@ sudo pacman -S python-gobject gtk4 libadwaita vte3
 ## Running
 
 ```bash
-PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 terminator.py
+PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 roboterm.py
 ```
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl+,` | Preferences |
-| `Ctrl+Shift+C` | Copy selection |
-| `Ctrl+Shift+V` | Paste clipboard |
-| `Ctrl+Shift+N` | New window |
-| `Ctrl+Shift+T` | New tab |
-| `Ctrl+Shift+W` | Close active pane (closes tab when last pane) |
-| `Ctrl+Shift+A` | Split pane automatically (based on dimensions) |
-| `Ctrl+Shift+E` | Split pane right |
-| `Ctrl+Shift+O` | Split pane down |
-| `Ctrl+Shift+]` | Rotate panes clockwise |
-| `Ctrl+Shift+[` | Rotate panes counter-clockwise |
-| `Ctrl+Page Up` | Previous tab |
-| `Ctrl+Page Down` | Next tab |
+| Shortcut         | Action                                         |
+|------------------|------------------------------------------------|
+| `Ctrl+,`         | Preferences                                    |
+| `Ctrl+Shift+C`   | Copy selection                                 |
+| `Ctrl+Shift+V`   | Paste clipboard                                |
+| `Ctrl+Shift+N`   | New window                                     |
+| `Ctrl+Shift+T`   | New tab                                        |
+| `Ctrl+Shift+W`   | Close active pane (closes tab when last pane)  |
+| `Ctrl+Shift+A`   | Split pane automatically (based on dimensions) |
+| `Ctrl+Shift+E`   | Split pane right                               |
+| `Ctrl+Shift+O`   | Split pane down                                |
+| `Ctrl+Shift+]`   | Rotate panes clockwise                         |
+| `Ctrl+Shift+[`   | Rotate panes counter-clockwise                 |
+| `Ctrl+Page Up`   | Previous tab                                   |
+| `Ctrl+Page Down` | Next tab                                       |
 
 Right-click any pane for a context menu with the same split and close actions.
 
 ## Project Layout
 
 ```
-terminator.py          entry point
+roboterm.py          entry point
 roboterm/
   __init__.py          gi version requirements and Adw.init()
   settings.py          Settings singleton, THEMES, _rgba_to_hex

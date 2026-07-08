@@ -228,15 +228,15 @@ class TerminalWindow(Adw.ApplicationWindow):
             if keyval in (Gdk.KEY_w, Gdk.KEY_W):
                 if p := self._active_panes(): p.close_active()
                 return True
-
-        if mods == MS:
             if keyval in (Gdk.KEY_a, Gdk.KEY_A):
                 if p := self._active_panes(): p.split_auto()
                 return True
-            if keyval in (Gdk.KEY_e, Gdk.KEY_E):
+            if keyval in (Gdk.KEY_d, Gdk.KEY_D):
                 if p := self._active_panes(): p.split_active(Gtk.Orientation.HORIZONTAL)
                 return True
-            if keyval in (Gdk.KEY_o, Gdk.KEY_O):
+
+        if mods == MS:
+            if keyval in (Gdk.KEY_d, Gdk.KEY_D):
                 if p := self._active_panes(): p.split_active(Gtk.Orientation.VERTICAL)
                 return True
             if keyval == Gdk.KEY_bracketleft:
