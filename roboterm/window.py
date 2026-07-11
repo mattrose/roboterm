@@ -101,20 +101,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._new_tab()
 
         self._setup_window_actions()
-        if _MACOS:
-            self._setup_macos_key_handler()
-        else:
-            self._add_shortcut("<Control>comma",               self._open_preferences)
-            self._add_shortcut("<Control><Shift>n",            lambda: self.get_application().new_window())
-            self._add_shortcut("<Control><Shift>t",            self._new_tab)
-            self._add_shortcut("<Control><Shift>a",            lambda: self._active_panes().split_auto())
-            self._add_shortcut("<Control><Shift>e",            lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL))
-            self._add_shortcut("<Control><Shift>o",            lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL))
-            self._add_shortcut("<Control><Shift>bracketright", lambda: self._active_panes().rotate_cw())
-            self._add_shortcut("<Control><Shift>bracketleft",  lambda: self._active_panes().rotate_ccw())
-            self._add_shortcut("<Control><Shift>w",            lambda: self._active_panes().close_active())
-            self._add_shortcut("<Control>Page_Up",             lambda: self._notebook.prev_page())
-            self._add_shortcut("<Control>Page_Down",           lambda: self._notebook.next_page())
+        self._setup_key_handler()
 
     # ── Tab management ────────────────────────────────────────────────────────
 
@@ -200,65 +187,55 @@ class TerminalWindow(Adw.ApplicationWindow):
 
     # ── Shortcuts ─────────────────────────────────────────────────────────────
 
-    def _setup_macos_key_handler(self) -> None:
-        """
-        On macOS, GTK ShortcutController (even GLOBAL scope) doesn't reliably
-        fire when VTE has focus. Instead, attach a CAPTURE-phase key controller
-        directly to the window so we intercept events before VTE sees them.
-        """
+    def _setup_key_handler(self) -> None:
+        """Intercept keys before VTE via CAPTURE phase — needed on all platforms."""
+        self._key_table = self._build_key_table()
         ctrl = Gtk.EventControllerKey()
         ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        ctrl.connect("key-pressed", self._on_macos_key_pressed)
+        ctrl.connect("key-pressed", self._on_key_pressed)
         self.add_controller(ctrl)
 
-    def _on_macos_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
-        mods = state & (Gdk.ModifierType.META_MASK | Gdk.ModifierType.SHIFT_MASK |
-                        Gdk.ModifierType.ALT_MASK  | Gdk.ModifierType.CONTROL_MASK)
-        M  = Gdk.ModifierType.META_MASK
-        MS = Gdk.ModifierType.META_MASK | Gdk.ModifierType.SHIFT_MASK
-        MA = Gdk.ModifierType.META_MASK | Gdk.ModifierType.ALT_MASK
+    def _build_key_table(self) -> dict:
+        """Return {(modifier_mask, keyval): callback} for the current platform."""
+        if _MACOS:
+            M  = Gdk.ModifierType.META_MASK
+            MS = M | Gdk.ModifierType.SHIFT_MASK
+            MA = M | Gdk.ModifierType.ALT_MASK
+            return {
+                (M,  Gdk.KEY_comma):        self._open_preferences,
+                (M,  Gdk.KEY_n):            lambda: self.get_application().new_window(),
+                (M,  Gdk.KEY_t):            self._new_tab,
+                (M,  Gdk.KEY_w):            lambda: (p := self._active_panes()) and p.close_active(),
+                (M,  Gdk.KEY_a):            lambda: (p := self._active_panes()) and p.split_auto(),
+                (M,  Gdk.KEY_d):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
+                (MS, Gdk.KEY_d):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
+                (MS, Gdk.KEY_bracketleft):  self._notebook.prev_page,
+                (MS, Gdk.KEY_bracketright): self._notebook.next_page,
+                (MA, Gdk.KEY_bracketright): lambda: (p := self._active_panes()) and p.rotate_cw(),
+                (MA, Gdk.KEY_bracketleft):  lambda: (p := self._active_panes()) and p.rotate_ccw(),
+            }
+        else:
+            C  = Gdk.ModifierType.CONTROL_MASK
+            CS = C | Gdk.ModifierType.SHIFT_MASK
+            return {
+                (C,  Gdk.KEY_comma):        self._open_preferences,
+                (C,  Gdk.KEY_Page_Up):      self._notebook.prev_page,
+                (C,  Gdk.KEY_Page_Down):    self._notebook.next_page,
+                (CS, Gdk.KEY_n):            lambda: self.get_application().new_window(),
+                (CS, Gdk.KEY_t):            self._new_tab,
+                (CS, Gdk.KEY_w):            lambda: (p := self._active_panes()) and p.close_active(),
+                (CS, Gdk.KEY_a):            lambda: (p := self._active_panes()) and p.split_auto(),
+                (CS, Gdk.KEY_e):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
+                (CS, Gdk.KEY_o):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
+                (CS, Gdk.KEY_bracketright): lambda: (p := self._active_panes()) and p.rotate_cw(),
+                (CS, Gdk.KEY_bracketleft):  lambda: (p := self._active_panes()) and p.rotate_ccw(),
+            }
 
-        if mods == M:
-            if keyval == Gdk.KEY_comma:
-                self._open_preferences(); return True
-            if keyval in (Gdk.KEY_n, Gdk.KEY_N):
-                self.get_application().new_window(); return True
-            if keyval in (Gdk.KEY_t, Gdk.KEY_T):
-                self._new_tab(); return True
-            if keyval in (Gdk.KEY_w, Gdk.KEY_W):
-                if p := self._active_panes(): p.close_active()
-                return True
-            if keyval in (Gdk.KEY_a, Gdk.KEY_A):
-                if p := self._active_panes(): p.split_auto()
-                return True
-            if keyval in (Gdk.KEY_d, Gdk.KEY_D):
-                if p := self._active_panes(): p.split_active(Gtk.Orientation.HORIZONTAL)
-                return True
-
-        if mods == MS:
-            if keyval in (Gdk.KEY_d, Gdk.KEY_D):
-                if p := self._active_panes(): p.split_active(Gtk.Orientation.VERTICAL)
-                return True
-            if keyval == Gdk.KEY_bracketleft:
-                self._notebook.prev_page(); return True
-            if keyval == Gdk.KEY_bracketright:
-                self._notebook.next_page(); return True
-
-        if mods == MA:
-            if keyval == Gdk.KEY_bracketright:
-                if p := self._active_panes(): p.rotate_cw()
-                return True
-            if keyval == Gdk.KEY_bracketleft:
-                if p := self._active_panes(): p.rotate_ccw()
-                return True
-
+    def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
+        mods = state & (Gdk.ModifierType.META_MASK    | Gdk.ModifierType.SHIFT_MASK |
+                        Gdk.ModifierType.ALT_MASK      | Gdk.ModifierType.CONTROL_MASK)
+        kv = Gdk.keyval_to_lower(keyval)
+        if cb := self._key_table.get((mods, kv)):
+            cb()
+            return True
         return False
-
-    def _add_shortcut(self, accel: str, cb) -> None:
-        trigger  = Gtk.ShortcutTrigger.parse_string(accel)
-        action   = Gtk.CallbackAction.new(lambda *_: cb() or True)
-        shortcut = Gtk.Shortcut(trigger=trigger, action=action)
-        ctrl     = Gtk.ShortcutController()
-        ctrl.set_scope(Gtk.ShortcutScope.GLOBAL)
-        ctrl.add_shortcut(shortcut)
-        self.add_controller(ctrl)
