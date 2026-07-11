@@ -22,6 +22,12 @@ class TerminalApp(Adw.Application):
         win.present()
 
     def _on_activate(self, _app) -> None:
+        if not _MACOS:
+            # Register Ctrl+, at the application level so it fires via the
+            # application's accelerator group (processed in CAPTURE phase),
+            # before VTE can consume the event.
+            self.set_accels_for_action("win.preferences", ["<Control>comma"])
+
         css_provider = Gtk.CssProvider()
         css_provider.load_from_string(
             ".terminal-titlebar {"

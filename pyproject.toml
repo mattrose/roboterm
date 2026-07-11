@@ -1,3 +1,14 @@
+[project.optional-dependencies]
+ui-tests = [
+    "pyautogui>=0.9.54",
+    "python-xlib>=0.33",
+    "Pillow>=10.0",
+    "pyvirtualdisplay>=3.0",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "ui: end-to-end GUI tests (require display + xdotool + pyautogui)",
+]
