@@ -6,6 +6,8 @@ from gi.repository import Gtk, Vte, GLib, GObject, Gdk, Gio
 
 _MACOS = sys.platform == "darwin"
 
+_URL_PATTERN = r"https?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]"
+
 from .settings import Settings
 
 
@@ -64,7 +66,10 @@ class TerminalWidget(Gtk.ScrolledWindow):
         key_ctrl.connect("key-pressed", self._on_key_pressed)
         self._vte.add_controller(key_ctrl)
 
+        self._context_url: str | None = None
+        self._url_tag: int = -1
         self._build_context_menu()
+        self._setup_url_handling()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -109,6 +114,10 @@ class TerminalWidget(Gtk.ScrolledWindow):
     def _build_context_menu(self) -> None:
         menu_model = Gio.Menu()
 
+        url_section = Gio.Menu()
+        url_section.append("Open Link", "term.open-url")
+        menu_model.append_section(None, url_section)
+
         clipboard_section = Gio.Menu()
         clipboard_section.append("Copy",  "term.copy")
         clipboard_section.append("Paste", "term.paste")
@@ -139,6 +148,12 @@ class TerminalWidget(Gtk.ScrolledWindow):
         popover.set_parent(self._vte)
 
         ag = Gio.SimpleActionGroup()
+
+        self._open_url_action = Gio.SimpleAction.new("open-url", None)
+        self._open_url_action.set_enabled(False)
+        self._open_url_action.connect("activate",
+            lambda _a, _p: self._context_url and self._open_url(self._context_url))
+        ag.add_action(self._open_url_action)
 
         copy_action = Gio.SimpleAction.new("copy", None)
         copy_action.connect("activate", lambda _a, _p: self.copy_clipboard())
@@ -171,6 +186,55 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
         self._popover = popover
 
+    def _setup_url_handling(self) -> None:
+        try:
+            regex = Vte.Regex.new_for_match(_URL_PATTERN, len(_URL_PATTERN.encode()), 0)
+            self._url_tag = self._vte.match_add_regex(regex, 0)
+            self._vte.match_set_cursor_name(self._url_tag, "pointer")
+        except GLib.Error:
+            pass
+
+        click = Gtk.GestureClick()
+        click.set_button(Gdk.BUTTON_PRIMARY)
+        click.connect("pressed", self._on_primary_click)
+        self._vte.add_controller(click)
+
+    def _url_at_event(self, event) -> str | None:
+        if event is None:
+            return None
+        try:
+            url = self._vte.hyperlink_check_event(event)
+            if url:
+                return url
+        except Exception:
+            pass
+        if self._url_tag >= 0:
+            try:
+                url, _ = self._vte.match_check_event(event)
+                if url:
+                    return url
+            except Exception:
+                pass
+        return None
+
+    def _open_url(self, url: str) -> None:
+        try:
+            Gio.AppInfo.launch_default_for_uri(url, None)
+        except GLib.Error as e:
+            print(f"Failed to open URL: {e.message}")
+
+    def _on_primary_click(self, gesture, _n_press, _x, _y) -> None:
+        open_mod = Gdk.ModifierType.META_MASK if _MACOS else Gdk.ModifierType.CONTROL_MASK
+        mods = gesture.get_current_event_state() & (
+            Gdk.ModifierType.META_MASK | Gdk.ModifierType.CONTROL_MASK
+        )
+        if mods != open_mod:
+            return
+        url = self._url_at_event(gesture.get_current_event())
+        if url:
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+            self._open_url(url)
+
     def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
         mods = state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
                         | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.META_MASK)
@@ -188,6 +252,8 @@ class TerminalWidget(Gtk.ScrolledWindow):
         return False
 
     def _on_right_click(self, gesture, _n_press, x, y, popover) -> None:
+        self._context_url = self._url_at_event(gesture.get_current_event())
+        self._open_url_action.set_enabled(self._context_url is not None)
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
