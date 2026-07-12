@@ -8,7 +8,9 @@ A GTK4/VTE terminal emulator written in Python, with tab support, pane splitting
 - Horizontal and vertical pane splitting
 - Pane rotation
 - Per-pane title bar (shows shell/program title via OSC sequences)
+- Clickable http/https URLs and OSC-8 hyperlinks (Cmd/Ctrl+click, or right-click for "Open Link")
 - Preferences dialog: font, colors, 10 built-in themes, cursor shape/blink, scrollback, bold-is-bright
+- Customizable keybindings, editable from the Preferences window
 - Settings persisted to `~/.config/roboterm/settings.json`
 - Ctrl+C in the launching terminal cleanly quits the app
 
@@ -46,21 +48,23 @@ PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 roboterm.py
 
 ## Keyboard Shortcuts
 
-| Shortcut         | Action                                         |
-|------------------|------------------------------------------------|
-| `Ctrl+,`         | Preferences                                    |
-| `Ctrl+Shift+C`   | Copy selection                                 |
-| `Ctrl+Shift+V`   | Paste clipboard                                |
-| `Ctrl+Shift+N`   | New window                                     |
-| `Ctrl+Shift+T`   | New tab                                        |
-| `Ctrl+Shift+W`   | Close active pane (closes tab when last pane)  |
-| `Ctrl+Shift+A`   | Split pane automatically (based on dimensions) |
-| `Ctrl+Shift+E`   | Split pane right                               |
-| `Ctrl+Shift+O`   | Split pane down                                |
-| `Ctrl+Shift+]`   | Rotate panes clockwise                         |
-| `Ctrl+Shift+[`   | Rotate panes counter-clockwise                 |
-| `Ctrl+Page Up`   | Previous tab                                   |
-| `Ctrl+Page Down` | Next tab                                       |
+Defaults below; every shortcut except Copy/Paste can be rebound from the Preferences window's Keybindings tab.
+
+| Action                                          | macOS            | Linux / Other    |
+|--------------------------------------------------|------------------|-------------------|
+| Preferences                                      | `Cmd+,`          | `Ctrl+,`          |
+| Copy selection                                   | `Cmd+C`          | `Ctrl+Shift+C`    |
+| Paste clipboard                                  | `Cmd+V`          | `Ctrl+Shift+V`    |
+| New window                                       | `Cmd+N`          | `Ctrl+Shift+N`    |
+| New tab                                          | `Cmd+T`          | `Ctrl+Shift+T`    |
+| Close active pane (closes tab when last pane)    | `Cmd+W`          | `Ctrl+Shift+W`    |
+| Split pane automatically (based on dimensions)   | `Cmd+A`          | `Ctrl+Shift+A`    |
+| Split pane right                                 | `Cmd+D`          | `Ctrl+Shift+E`    |
+| Split pane down                                  | `Cmd+Shift+D`    | `Ctrl+Shift+O`    |
+| Rotate panes clockwise                           | `Cmd+Option+]`   | `Ctrl+Shift+]`    |
+| Rotate panes counter-clockwise                   | `Cmd+Option+[`   | `Ctrl+Shift+[`    |
+| Previous tab                                     | `Cmd+Shift+[`    | `Ctrl+Page Up`    |
+| Next tab                                         | `Cmd+Shift+]`    | `Ctrl+Page Down`  |
 
 Right-click any pane for a context menu with the same split and close actions.
 
