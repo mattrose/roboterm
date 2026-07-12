@@ -159,6 +159,7 @@ class PreferencesWindow(Adw.PreferencesWindow):
 
         fg_btn = _make_color_btn("foreground")
         bg_btn = _make_color_btn("background")
+        color_handler_ids: dict = {}
 
         for label, btn, key in (
             ("Text",       fg_btn, "foreground"),
@@ -166,7 +167,7 @@ class PreferencesWindow(Adw.PreferencesWindow):
         ):
             row = Adw.ActionRow()
             row.set_title(label)
-            btn.connect("notify::rgba", lambda b, _, k=key: (
+            color_handler_ids[key] = btn.connect("notify::rgba", lambda b, _, k=key: (
                 s.set_value(k, _rgba_to_hex(b.get_rgba())),
                 theme_row.handler_block(theme_handler_id),
                 theme_row.set_selected(0),
@@ -183,8 +184,12 @@ class PreferencesWindow(Adw.PreferencesWindow):
             s.apply_theme(name)
             fg = Gdk.RGBA(); fg.parse(s.get_value("foreground"))
             bg = Gdk.RGBA(); bg.parse(s.get_value("background"))
+            fg_btn.handler_block(color_handler_ids["foreground"])
+            bg_btn.handler_block(color_handler_ids["background"])
             fg_btn.set_rgba(fg)
             bg_btn.set_rgba(bg)
+            fg_btn.handler_unblock(color_handler_ids["foreground"])
+            bg_btn.handler_unblock(color_handler_ids["background"])
 
         theme_handler_id = theme_row.connect("notify::selected", _on_theme_selected)
 
