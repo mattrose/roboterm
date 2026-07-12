@@ -2,6 +2,108 @@ from gi.repository import Gtk, Adw, Gdk, Pango
 
 from .settings import Settings, THEMES, _rgba_to_hex
 
+_ACTIONS = [
+    ("preferences", "Preferences"),
+    ("new-window",  "New Window"),
+    ("new-tab",     "New Tab"),
+    ("close-pane",  "Close Pane"),
+    ("split-auto",  "Split Auto"),
+    ("split-right", "Split Right"),
+    ("split-down",  "Split Down"),
+    ("prev-tab",    "Previous Tab"),
+    ("next-tab",    "Next Tab"),
+    ("rotate-cw",   "Rotate Clockwise"),
+    ("rotate-ccw",  "Rotate Counter-Clockwise"),
+]
+
+_MODIFIER_KEYS = frozenset({
+    Gdk.KEY_Control_L, Gdk.KEY_Control_R,
+    Gdk.KEY_Shift_L,   Gdk.KEY_Shift_R,
+    Gdk.KEY_Alt_L,     Gdk.KEY_Alt_R,
+    Gdk.KEY_Meta_L,    Gdk.KEY_Meta_R,
+    Gdk.KEY_Super_L,   Gdk.KEY_Super_R,
+    Gdk.KEY_Hyper_L,   Gdk.KEY_Hyper_R,
+})
+
+
+def _accel_label(accel: str) -> str:
+    if not accel:
+        return "Disabled"
+    *_, keyval, mods = Gtk.accelerator_parse(accel)
+    return Gtk.accelerator_get_label(keyval, mods) if keyval else accel
+
+
+class ShortcutRow(Adw.ActionRow):
+    def __init__(self, label: str, action_key: str, settings, recording_state: list):
+        super().__init__()
+        self.set_title(label)
+        self._action_key   = action_key
+        self._settings     = settings
+        self._rec_state    = recording_state  # [currently_recording_row | None]
+        self._capture_ctrl = None
+
+        self._btn = Gtk.Button()
+        self._btn.set_valign(Gtk.Align.CENTER)
+        self._btn.add_css_class("flat")
+        self._btn.connect("clicked", self._on_btn_clicked)
+        self.add_suffix(self._btn)
+        self.set_activatable_widget(self._btn)
+
+        self._update_display()
+
+    def _effective_accel(self) -> str:
+        return self._settings.get_keybindings().get(self._action_key, "")
+
+    def _update_display(self) -> None:
+        self._btn.set_label(_accel_label(self._effective_accel()))
+
+    def _on_btn_clicked(self, *_) -> None:
+        if self._rec_state[0] is self:
+            self._cancel()
+            return
+        if self._rec_state[0] is not None:
+            self._rec_state[0]._cancel()
+        self._start()
+
+    def _start(self) -> None:
+        self._rec_state[0] = self
+        self._btn.set_label("Press a key…")
+        self._btn.add_css_class("suggested-action")
+        ctrl = Gtk.EventControllerKey()
+        ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        ctrl.connect("key-pressed", self._on_key_captured)
+        self.get_root().add_controller(ctrl)
+        self._capture_ctrl = ctrl
+
+    def _cancel(self) -> None:
+        self._finish(save=False)
+
+    def _finish(self, save: bool, accel: str = "") -> None:
+        self._rec_state[0] = None
+        self._btn.remove_css_class("suggested-action")
+        if self._capture_ctrl:
+            self.get_root().remove_controller(self._capture_ctrl)
+            self._capture_ctrl = None
+        if save:
+            overrides = dict(self._settings.get_value("keybindings"))
+            overrides[self._action_key] = accel
+            self._settings.set_value("keybindings", overrides)
+        self._update_display()
+
+    def _on_key_captured(self, _ctrl, keyval, _keycode, state) -> bool:
+        if keyval in _MODIFIER_KEYS:
+            return True
+        mods = state & (Gdk.ModifierType.META_MASK    | Gdk.ModifierType.SHIFT_MASK |
+                        Gdk.ModifierType.ALT_MASK      | Gdk.ModifierType.CONTROL_MASK)
+        if keyval == Gdk.KEY_Escape and not mods:
+            self._cancel()
+        elif keyval in (Gdk.KEY_BackSpace, Gdk.KEY_Delete) and not mods:
+            self._finish(save=True, accel="")
+        else:
+            kv = Gdk.keyval_to_lower(keyval)
+            self._finish(save=True, accel=Gtk.accelerator_name(kv, mods))
+        return True
+
 
 class PreferencesWindow(Adw.PreferencesWindow):
     def __init__(self, transient_for=None):
@@ -14,6 +116,8 @@ class PreferencesWindow(Adw.PreferencesWindow):
 
         s = Settings.get()
         page = Adw.PreferencesPage()
+        page.set_title("General")
+        page.set_icon_name("preferences-system-symbolic")
         self.add(page)
 
         # ── Appearance ────────────────────────────────────────────────────────
@@ -142,3 +246,38 @@ class PreferencesWindow(Adw.PreferencesWindow):
         bold_row.add_suffix(bold_switch)
         bold_row.set_activatable_widget(bold_switch)
         terminal_group.add(bold_row)
+
+        # ── Keybindings page ──────────────────────────────────────────────────
+        kb_page = Adw.PreferencesPage()
+        kb_page.set_title("Keybindings")
+        kb_page.set_icon_name("input-keyboard-symbolic")
+        self.add(kb_page)
+
+        kb_group = Adw.PreferencesGroup()
+        kb_group.set_title("Shortcuts")
+        kb_group.set_description(
+            "Click a shortcut to record a new key combination.\n"
+            "Press Escape to cancel, or Backspace / Delete to disable."
+        )
+        kb_page.add(kb_group)
+
+        reset_btn = Gtk.Button(label="Reset All")
+        reset_btn.set_valign(Gtk.Align.CENTER)
+        reset_btn.add_css_class("flat")
+        kb_group.set_header_suffix(reset_btn)
+
+        recording_state = [None]
+        shortcut_rows = []
+        for action_key, label in _ACTIONS:
+            row = ShortcutRow(label, action_key, s, recording_state)
+            kb_group.add(row)
+            shortcut_rows.append(row)
+
+        def _reset_all(*_):
+            if recording_state[0] is not None:
+                recording_state[0]._cancel()
+            s.set_value("keybindings", {})
+            for r in shortcut_rows:
+                r._update_display()
+
+        reset_btn.connect("clicked", _reset_all)

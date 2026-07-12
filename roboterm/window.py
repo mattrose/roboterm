@@ -1,11 +1,8 @@
-import sys
-
 from gi.repository import Gtk, Adw, GObject, Gio, Gdk
 
 from .panes import PaneManager
 from .preferences import PreferencesWindow
-
-_MACOS = sys.platform == "darwin"
+from .settings import Settings
 
 
 class TabLabel(Gtk.Box):
@@ -190,46 +187,38 @@ class TerminalWindow(Adw.ApplicationWindow):
     def _setup_key_handler(self) -> None:
         """Intercept keys before VTE via CAPTURE phase — needed on all platforms."""
         self._key_table = self._build_key_table()
+        Settings.get().connect_changed(self._reload_key_table)
         ctrl = Gtk.EventControllerKey()
         ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         ctrl.connect("key-pressed", self._on_key_pressed)
         self.add_controller(ctrl)
 
+    def _reload_key_table(self) -> None:
+        self._key_table = self._build_key_table()
+
     def _build_key_table(self) -> dict:
-        """Return {(modifier_mask, keyval): callback} for the current platform."""
-        if _MACOS:
-            M  = Gdk.ModifierType.META_MASK
-            MS = M | Gdk.ModifierType.SHIFT_MASK
-            MA = M | Gdk.ModifierType.ALT_MASK
-            return {
-                (M,  Gdk.KEY_comma):        self._open_preferences,
-                (M,  Gdk.KEY_n):            lambda: self.get_application().new_window(),
-                (M,  Gdk.KEY_t):            self._new_tab,
-                (M,  Gdk.KEY_w):            lambda: (p := self._active_panes()) and p.close_active(),
-                (M,  Gdk.KEY_a):            lambda: (p := self._active_panes()) and p.split_auto(),
-                (M,  Gdk.KEY_d):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
-                (MS, Gdk.KEY_d):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
-                (MS, Gdk.KEY_bracketleft):  self._notebook.prev_page,
-                (MS, Gdk.KEY_bracketright): self._notebook.next_page,
-                (MA, Gdk.KEY_bracketright): lambda: (p := self._active_panes()) and p.rotate_cw(),
-                (MA, Gdk.KEY_bracketleft):  lambda: (p := self._active_panes()) and p.rotate_ccw(),
-            }
-        else:
-            C  = Gdk.ModifierType.CONTROL_MASK
-            CS = C | Gdk.ModifierType.SHIFT_MASK
-            return {
-                (C,  Gdk.KEY_comma):        self._open_preferences,
-                (C,  Gdk.KEY_Page_Up):      self._notebook.prev_page,
-                (C,  Gdk.KEY_Page_Down):    self._notebook.next_page,
-                (CS, Gdk.KEY_n):            lambda: self.get_application().new_window(),
-                (CS, Gdk.KEY_t):            self._new_tab,
-                (CS, Gdk.KEY_w):            lambda: (p := self._active_panes()) and p.close_active(),
-                (CS, Gdk.KEY_a):            lambda: (p := self._active_panes()) and p.split_auto(),
-                (CS, Gdk.KEY_e):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
-                (CS, Gdk.KEY_o):            lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
-                (CS, Gdk.KEY_bracketright): lambda: (p := self._active_panes()) and p.rotate_cw(),
-                (CS, Gdk.KEY_bracketleft):  lambda: (p := self._active_panes()) and p.rotate_ccw(),
-            }
+        """Return {(modifier_mask, keyval): callback} from current settings."""
+        actions = {
+            "preferences": self._open_preferences,
+            "new-window":  lambda: self.get_application().new_window(),
+            "new-tab":     self._new_tab,
+            "close-pane":  lambda: (p := self._active_panes()) and p.close_active(),
+            "split-auto":  lambda: (p := self._active_panes()) and p.split_auto(),
+            "split-right": lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
+            "split-down":  lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
+            "prev-tab":    self._notebook.prev_page,
+            "next-tab":    self._notebook.next_page,
+            "rotate-cw":   lambda: (p := self._active_panes()) and p.rotate_cw(),
+            "rotate-ccw":  lambda: (p := self._active_panes()) and p.rotate_ccw(),
+        }
+        table = {}
+        for name, accel in Settings.get().get_keybindings().items():
+            if not accel or name not in actions:
+                continue
+            *_, keyval, mods = Gtk.accelerator_parse(accel)
+            if keyval:
+                table[(mods, Gdk.keyval_to_lower(keyval))] = actions[name]
+        return table
 
     def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
         mods = state & (Gdk.ModifierType.META_MASK    | Gdk.ModifierType.SHIFT_MASK |

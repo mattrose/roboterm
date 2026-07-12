@@ -1,7 +1,40 @@
 import json
 import os
+import sys
 
 from gi.repository import Gdk, Vte, Pango
+
+_MACOS = sys.platform == "darwin"
+
+
+def _default_keybindings() -> dict:
+    if _MACOS:
+        return {
+            "preferences": "<Meta>comma",
+            "new-window":  "<Meta>n",
+            "new-tab":     "<Meta>t",
+            "close-pane":  "<Meta>w",
+            "split-auto":  "<Meta>a",
+            "split-right": "<Meta>d",
+            "split-down":  "<Meta><Shift>d",
+            "prev-tab":    "<Meta><Shift>bracketleft",
+            "next-tab":    "<Meta><Shift>bracketright",
+            "rotate-cw":   "<Meta><Alt>bracketright",
+            "rotate-ccw":  "<Meta><Alt>bracketleft",
+        }
+    return {
+        "preferences": "<Control>comma",
+        "new-window":  "<Control><Shift>n",
+        "new-tab":     "<Control><Shift>t",
+        "close-pane":  "<Control><Shift>w",
+        "split-auto":  "<Control><Shift>a",
+        "split-right": "<Control><Shift>e",
+        "split-down":  "<Control><Shift>o",
+        "prev-tab":    "<Control>Page_Up",
+        "next-tab":    "<Control>Page_Down",
+        "rotate-cw":   "<Control><Shift>bracketright",
+        "rotate-ccw":  "<Control><Shift>bracketleft",
+    }
 
 
 def _rgba_to_hex(rgba: Gdk.RGBA) -> str:
@@ -120,6 +153,7 @@ class Settings:
         "scrollback_lines": 10_000,
         "bold_is_bright":   False,
         "pane_titlebar":    "auto",
+        "keybindings":      {},
     }
 
     _instance: "Settings | None" = None
@@ -161,6 +195,12 @@ class Settings:
 
     def connect_changed(self, cb) -> None:
         self._listeners.append(cb)
+
+    def get_keybindings(self) -> dict:
+        """Return effective keybindings: platform defaults merged with user overrides."""
+        result = _default_keybindings()
+        result.update(self._data.get("keybindings", {}))
+        return result
 
     def apply_theme(self, theme_name: str) -> None:
         self._data["theme"] = theme_name
