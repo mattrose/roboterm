@@ -113,48 +113,19 @@ class TerminalWidget(Gtk.ScrolledWindow):
     # ── Private ───────────────────────────────────────────────────────────────
 
     def _build_context_menu(self) -> None:
-        menu_model = Gio.Menu()
+        self._menu_with_url    = self._make_menu_model(has_url=True)
+        self._menu_without_url = self._make_menu_model(has_url=False)
 
-        url_section = Gio.Menu()
-        url_section.append("Open Link", "term.open-url")
-        menu_model.append_section(None, url_section)
-
-        clipboard_section = Gio.Menu()
-        clipboard_section.append("Copy",  "term.copy")
-        clipboard_section.append("Paste", "term.paste")
-        menu_model.append_section(None, clipboard_section)
-
-        tab_section = Gio.Menu()
-        tab_section.append("New Window", "term.new-window")
-        tab_section.append("New Tab",    "term.new-tab")
-        menu_model.append_section(None, tab_section)
-
-        split_section = Gio.Menu()
-        split_section.append("Split Auto",  "term.split-auto")
-        split_section.append("Split Right", "term.split-right")
-        split_section.append("Split Down",  "term.split-down")
-        menu_model.append_section(None, split_section)
-
-        rotate_section = Gio.Menu()
-        rotate_section.append("Rotate Clockwise",        "term.rotate-cw")
-        rotate_section.append("Rotate Counterclockwise", "term.rotate-ccw")
-        menu_model.append_section(None, rotate_section)
-
-        close_section = Gio.Menu()
-        close_section.append("Close Pane", "term.close-pane")
-        menu_model.append_section(None, close_section)
-
-        popover = Gtk.PopoverMenu.new_from_model(menu_model)
+        popover = Gtk.PopoverMenu.new_from_model(self._menu_without_url)
         popover.set_has_arrow(False)
         popover.set_parent(self._vte)
 
         ag = Gio.SimpleActionGroup()
 
-        self._open_url_action = Gio.SimpleAction.new("open-url", None)
-        self._open_url_action.set_enabled(False)
-        self._open_url_action.connect("activate",
+        open_url_action = Gio.SimpleAction.new("open-url", None)
+        open_url_action.connect("activate",
             lambda _a, _p: self._context_url and self._open_url(self._context_url))
-        ag.add_action(self._open_url_action)
+        ag.add_action(open_url_action)
 
         copy_action = Gio.SimpleAction.new("copy", None)
         copy_action.connect("activate", lambda _a, _p: self.copy_clipboard())
@@ -186,6 +157,35 @@ class TerminalWidget(Gtk.ScrolledWindow):
         self._vte.add_controller(gesture)
 
         self._popover = popover
+
+    @staticmethod
+    def _make_menu_model(has_url: bool) -> Gio.Menu:
+        menu = Gio.Menu()
+        if has_url:
+            url_sec = Gio.Menu()
+            url_sec.append("Open Link", "term.open-url")
+            menu.append_section(None, url_sec)
+        clip_sec = Gio.Menu()
+        clip_sec.append("Copy",  "term.copy")
+        clip_sec.append("Paste", "term.paste")
+        menu.append_section(None, clip_sec)
+        tab_sec = Gio.Menu()
+        tab_sec.append("New Window", "term.new-window")
+        tab_sec.append("New Tab",    "term.new-tab")
+        menu.append_section(None, tab_sec)
+        split_sec = Gio.Menu()
+        split_sec.append("Split Auto",  "term.split-auto")
+        split_sec.append("Split Right", "term.split-right")
+        split_sec.append("Split Down",  "term.split-down")
+        menu.append_section(None, split_sec)
+        rotate_sec = Gio.Menu()
+        rotate_sec.append("Rotate Clockwise",        "term.rotate-cw")
+        rotate_sec.append("Rotate Counterclockwise", "term.rotate-ccw")
+        menu.append_section(None, rotate_sec)
+        close_sec = Gio.Menu()
+        close_sec.append("Close Pane", "term.close-pane")
+        menu.append_section(None, close_sec)
+        return menu
 
     _PCRE2_MULTILINE = 0x00000400  # required by vte_terminal_match_add_regex
 
@@ -256,7 +256,8 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
     def _on_right_click(self, gesture, _n_press, x, y, popover) -> None:
         self._context_url = self._url_at_coords(x, y)
-        self._open_url_action.set_enabled(self._context_url is not None)
+        popover.set_menu_model(
+            self._menu_with_url if self._context_url else self._menu_without_url)
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
