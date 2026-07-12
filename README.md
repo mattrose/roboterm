@@ -12,7 +12,6 @@ A GTK4/VTE terminal emulator written in Python, with tab support, pane splitting
 - Preferences dialog: font, colors, 10 built-in themes, cursor shape/blink, scrollback, bold-is-bright
 - Customizable keybindings, editable from the Preferences window
 - Settings persisted to `~/.config/roboterm/settings.json`
-- Ctrl+C in the launching terminal cleanly quits the app
 
 ## Dependencies
 
