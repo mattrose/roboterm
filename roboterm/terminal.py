@@ -6,6 +6,8 @@ from gi.repository import Gtk, Vte, GLib, GObject, Gdk, Gio
 
 _MACOS = sys.platform == "darwin"
 
+_URL_PATTERN = r"https?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]"
+
 from .settings import Settings
 
 
@@ -64,7 +66,11 @@ class TerminalWidget(Gtk.ScrolledWindow):
         key_ctrl.connect("key-pressed", self._on_key_pressed)
         self._vte.add_controller(key_ctrl)
 
+        self._context_url: str | None = None
+        self._url_regex = None
+        self._url_tag: int = -1
         self._build_context_menu()
+        self._setup_url_handling()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -107,38 +113,19 @@ class TerminalWidget(Gtk.ScrolledWindow):
     # ── Private ───────────────────────────────────────────────────────────────
 
     def _build_context_menu(self) -> None:
-        menu_model = Gio.Menu()
+        self._menu_with_url    = self._make_menu_model(has_url=True)
+        self._menu_without_url = self._make_menu_model(has_url=False)
 
-        clipboard_section = Gio.Menu()
-        clipboard_section.append("Copy",  "term.copy")
-        clipboard_section.append("Paste", "term.paste")
-        menu_model.append_section(None, clipboard_section)
-
-        tab_section = Gio.Menu()
-        tab_section.append("New Window", "term.new-window")
-        tab_section.append("New Tab",    "term.new-tab")
-        menu_model.append_section(None, tab_section)
-
-        split_section = Gio.Menu()
-        split_section.append("Split Auto",  "term.split-auto")
-        split_section.append("Split Right", "term.split-right")
-        split_section.append("Split Down",  "term.split-down")
-        menu_model.append_section(None, split_section)
-
-        rotate_section = Gio.Menu()
-        rotate_section.append("Rotate Clockwise",        "term.rotate-cw")
-        rotate_section.append("Rotate Counterclockwise", "term.rotate-ccw")
-        menu_model.append_section(None, rotate_section)
-
-        close_section = Gio.Menu()
-        close_section.append("Close Pane", "term.close-pane")
-        menu_model.append_section(None, close_section)
-
-        popover = Gtk.PopoverMenu.new_from_model(menu_model)
+        popover = Gtk.PopoverMenu.new_from_model(self._menu_without_url)
         popover.set_has_arrow(False)
         popover.set_parent(self._vte)
 
         ag = Gio.SimpleActionGroup()
+
+        open_url_action = Gio.SimpleAction.new("open-url", None)
+        open_url_action.connect("activate",
+            lambda _a, _p: self._context_url and self._open_url(self._context_url))
+        ag.add_action(open_url_action)
 
         copy_action = Gio.SimpleAction.new("copy", None)
         copy_action.connect("activate", lambda _a, _p: self.copy_clipboard())
@@ -171,6 +158,86 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
         self._popover = popover
 
+    @staticmethod
+    def _make_menu_model(has_url: bool) -> Gio.Menu:
+        menu = Gio.Menu()
+        if has_url:
+            url_sec = Gio.Menu()
+            url_sec.append("Open Link", "term.open-url")
+            menu.append_section(None, url_sec)
+        clip_sec = Gio.Menu()
+        clip_sec.append("Copy",  "term.copy")
+        clip_sec.append("Paste", "term.paste")
+        menu.append_section(None, clip_sec)
+        tab_sec = Gio.Menu()
+        tab_sec.append("New Window", "term.new-window")
+        tab_sec.append("New Tab",    "term.new-tab")
+        menu.append_section(None, tab_sec)
+        split_sec = Gio.Menu()
+        split_sec.append("Split Auto",  "term.split-auto")
+        split_sec.append("Split Right", "term.split-right")
+        split_sec.append("Split Down",  "term.split-down")
+        menu.append_section(None, split_sec)
+        rotate_sec = Gio.Menu()
+        rotate_sec.append("Rotate Clockwise",        "term.rotate-cw")
+        rotate_sec.append("Rotate Counterclockwise", "term.rotate-ccw")
+        menu.append_section(None, rotate_sec)
+        close_sec = Gio.Menu()
+        close_sec.append("Close Pane", "term.close-pane")
+        menu.append_section(None, close_sec)
+        return menu
+
+    _PCRE2_MULTILINE = 0x00000400  # required by vte_terminal_match_add_regex
+
+    def _setup_url_handling(self) -> None:
+        try:
+            self._url_regex = Vte.Regex.new_for_match(
+                _URL_PATTERN, len(_URL_PATTERN.encode()), self._PCRE2_MULTILINE)
+            self._url_tag = self._vte.match_add_regex(self._url_regex, 0)
+            self._vte.match_set_cursor_name(self._url_tag, "pointer")
+        except GLib.Error:
+            pass
+
+        click = Gtk.GestureClick()
+        click.set_button(Gdk.BUTTON_PRIMARY)
+        click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        click.connect("pressed", self._on_primary_click)
+        self._vte.add_controller(click)
+
+    def _url_at_coords(self, x: float, y: float) -> str | None:
+        if self._url_tag < 0:
+            return None
+        try:
+            cw = self._vte.get_char_width()
+            ch = self._vte.get_char_height()
+            if cw > 0 and ch > 0:
+                col = int(x / cw)
+                row = int(y / ch)
+                url, _tag = self._vte.match_check(col, row)
+                if url:
+                    return url
+        except Exception:
+            pass
+        return None
+
+    def _open_url(self, url: str) -> None:
+        try:
+            Gio.AppInfo.launch_default_for_uri(url, None)
+        except GLib.Error as e:
+            print(f"Failed to open URL: {e.message}")
+
+    def _on_primary_click(self, gesture, _n_press, x, y) -> None:
+        open_mod = Gdk.ModifierType.META_MASK if _MACOS else Gdk.ModifierType.CONTROL_MASK
+        mods = gesture.get_current_event_state() & (
+            Gdk.ModifierType.META_MASK | Gdk.ModifierType.CONTROL_MASK
+        )
+        if mods != open_mod:
+            return
+        url = self._url_at_coords(x, y)
+        if url:
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+            self._open_url(url)
+
     def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:
         mods = state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
                         | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.META_MASK)
@@ -188,6 +255,9 @@ class TerminalWidget(Gtk.ScrolledWindow):
         return False
 
     def _on_right_click(self, gesture, _n_press, x, y, popover) -> None:
+        self._context_url = self._url_at_coords(x, y)
+        popover.set_menu_model(
+            self._menu_with_url if self._context_url else self._menu_without_url)
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
