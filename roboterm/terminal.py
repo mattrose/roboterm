@@ -67,6 +67,7 @@ class TerminalWidget(Gtk.ScrolledWindow):
         self._vte.add_controller(key_ctrl)
 
         self._context_url: str | None = None
+        self._url_regex = None
         self._url_tag: int = -1
         self._build_context_menu()
         self._setup_url_handling()
@@ -186,35 +187,37 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
         self._popover = popover
 
+    _PCRE2_MULTILINE = 0x00000400  # required by vte_terminal_match_add_regex
+
     def _setup_url_handling(self) -> None:
         try:
-            regex = Vte.Regex.new_for_match(_URL_PATTERN, len(_URL_PATTERN.encode()), 0)
-            self._url_tag = self._vte.match_add_regex(regex, 0)
+            self._url_regex = Vte.Regex.new_for_match(
+                _URL_PATTERN, len(_URL_PATTERN.encode()), self._PCRE2_MULTILINE)
+            self._url_tag = self._vte.match_add_regex(self._url_regex, 0)
             self._vte.match_set_cursor_name(self._url_tag, "pointer")
         except GLib.Error:
             pass
 
         click = Gtk.GestureClick()
         click.set_button(Gdk.BUTTON_PRIMARY)
+        click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         click.connect("pressed", self._on_primary_click)
         self._vte.add_controller(click)
 
-    def _url_at_event(self, event) -> str | None:
-        if event is None:
+    def _url_at_coords(self, x: float, y: float) -> str | None:
+        if self._url_tag < 0:
             return None
         try:
-            url = self._vte.hyperlink_check_event(event)
-            if url:
-                return url
-        except Exception:
-            pass
-        if self._url_tag >= 0:
-            try:
-                url, _ = self._vte.match_check_event(event)
+            cw = self._vte.get_char_width()
+            ch = self._vte.get_char_height()
+            if cw > 0 and ch > 0:
+                col = int(x / cw)
+                row = int(y / ch)
+                url, _tag = self._vte.match_check(col, row)
                 if url:
                     return url
-            except Exception:
-                pass
+        except Exception:
+            pass
         return None
 
     def _open_url(self, url: str) -> None:
@@ -223,14 +226,14 @@ class TerminalWidget(Gtk.ScrolledWindow):
         except GLib.Error as e:
             print(f"Failed to open URL: {e.message}")
 
-    def _on_primary_click(self, gesture, _n_press, _x, _y) -> None:
+    def _on_primary_click(self, gesture, _n_press, x, y) -> None:
         open_mod = Gdk.ModifierType.META_MASK if _MACOS else Gdk.ModifierType.CONTROL_MASK
         mods = gesture.get_current_event_state() & (
             Gdk.ModifierType.META_MASK | Gdk.ModifierType.CONTROL_MASK
         )
         if mods != open_mod:
             return
-        url = self._url_at_event(gesture.get_current_event())
+        url = self._url_at_coords(x, y)
         if url:
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
             self._open_url(url)
@@ -252,7 +255,7 @@ class TerminalWidget(Gtk.ScrolledWindow):
         return False
 
     def _on_right_click(self, gesture, _n_press, x, y, popover) -> None:
-        self._context_url = self._url_at_event(gesture.get_current_event())
+        self._context_url = self._url_at_coords(x, y)
         self._open_url_action.set_enabled(self._context_url is not None)
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         rect = Gdk.Rectangle()
