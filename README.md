@@ -18,7 +18,7 @@ A GTK4/VTE terminal emulator written in Python, with tab support, pane splitting
 ### macOS (Homebrew)
 
 ```bash
-brew install gtk4 libadwaita vte3 pygobject3
+brew install gtk4 libadwaita vte3 pygobject3 gtk-mac-integration
 ```
 
 ### Debian / Ubuntu
