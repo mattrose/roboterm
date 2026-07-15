@@ -94,6 +94,10 @@ mv Roboterm.app /Applications/
 
 A `make app` bundle keeps needing the Homebrew packages installed; a `make bundle` bundle is standalone. Launch it from the Dock, Launchpad, or `open /Applications/Roboterm.app`.
 
+## Known Issues
+
+**First window may appear blank on macOS.** On some Homebrew GTK4 builds, the very first window's content isn't painted until it receives a real keystroke or click — the shell underneath is running fine (it's a rendering-only bug in the GTK4 macOS backend, not in roboterm). Press any key and the prompt appears. Subsequent tabs, splits, and windows are unaffected.
+
 ## Keyboard Shortcuts
 
 Defaults below; every shortcut except Copy/Paste can be rebound from the Preferences window's Keybindings tab.
