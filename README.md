@@ -42,8 +42,10 @@ sudo pacman -S python-gobject gtk4 libadwaita vte3
 ## Running
 
 ```bash
-PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 roboterm.py
+PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" python3 roboterm.py
 ```
+
+This points `PYTHONPATH` at the `gi`/GTK bindings installed for whichever `python3` you run (any Python 3). On Linux with `python3-gi` installed system-wide, plain `python3 roboterm.py` usually works with no `PYTHONPATH`.
 
 ## Keyboard Shortcuts
 
@@ -92,8 +94,8 @@ tests/
 pytest tests/unit/
 ```
 
-**Integration tests** (requires GTK + VTE via Python 3.13):
+**Integration tests** (requires a Python 3 with GTK + VTE / PyGObject installed):
 
 ```bash
-PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 -m pytest tests/integration/
+PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" python3 -m pytest tests/integration/
 ```

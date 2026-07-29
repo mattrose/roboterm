@@ -6,6 +6,15 @@
 #include <string.h>
 #include <unistd.h>
 
+/*
+ * Python version this bundle was built against, e.g. "3.13". Normally supplied
+ * by the Makefile (-DROBOTERM_PY_VER=...) from the interpreter it detected;
+ * the fallback only matters if launcher.c is compiled by hand.
+ */
+#ifndef ROBOTERM_PY_VER
+#define ROBOTERM_PY_VER "3.13"
+#endif
+
 /* Prepend value to an existing colon-separated env var, or set it. */
 static void prepend_env(const char *key, const char *value) {
     const char *cur = getenv(key);
@@ -37,7 +46,7 @@ int main(int argc, char *argv[]) {
     snprintf(script,    sizeof(script),    "%s/roboterm.py", resources);
 
     /* ── Detect Homebrew prefix ── */
-    const char *brew = (access("/opt/homebrew/bin/python3.13", F_OK) == 0)
+    const char *brew = (access("/opt/homebrew/bin/python" ROBOTERM_PY_VER, F_OK) == 0)
                        ? "/opt/homebrew" : "/usr/local";
 
     /* ── GTK4 environment (safe to inherit — GTK needs them at runtime) ── */
@@ -67,14 +76,15 @@ int main(int argc, char *argv[]) {
      * leak into shells spawned by VTE.
      */
     snprintf(buf, sizeof(buf),
-        "%s/opt/python@3.13/Frameworks/Python.framework/Versions/3.13", brew);
+        "%s/opt/python@" ROBOTERM_PY_VER
+        "/Frameworks/Python.framework/Versions/" ROBOTERM_PY_VER, brew);
     wchar_t *whome = Py_DecodeLocale(buf, NULL);
     PyConfig_SetString(&config, &config.home, whome);
     PyMem_RawFree(whome);
 
     char pypath[4096];
     snprintf(pypath, sizeof(pypath),
-        "%s:%s/lib/python3.13/site-packages", resources, brew);
+        "%s:%s/lib/python" ROBOTERM_PY_VER "/site-packages", resources, brew);
     wchar_t *wpypath = Py_DecodeLocale(pypath, NULL);
     PyConfig_SetString(&config, &config.pythonpath_env, wpypath);
     PyMem_RawFree(wpypath);

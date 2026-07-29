@@ -11,10 +11,10 @@ roboterm is a GTK4/VTE terminal emulator written in Python (tabs, pane splitting
 ### Running
 
 ```bash
-PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 roboterm.py
+PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" python3 roboterm.py
 ```
 
-On Linux, `PYTHONPATH` typically isn't needed if `python3-gi` etc. are installed system-wide — just `python3 roboterm.py`.
+`PYTHONPATH` points at the `gi`/GTK bindings for whichever `python3` is used (any Python 3). On Linux, `PYTHONPATH` typically isn't needed if `python3-gi` etc. are installed system-wide — just `python3 roboterm.py`.
 
 ### Building the macOS app bundle
 
@@ -22,6 +22,8 @@ On Linux, `PYTHONPATH` typically isn't needed if `python3-gi` etc. are installed
 make app     # produces Roboterm.app (native C launcher embeds libpython so the Dock shows "Roboterm", not "Python")
 make clean
 ```
+
+The Makefile detects the `python3` on `PATH` and derives the version, include dir, and libpython it embeds via `sysconfig` — it fails with a message if that interpreter is missing or older than Python 3. Build against a different interpreter with `make PYTHON=/opt/homebrew/bin/python3.13`. The detected version is passed to `macos/launcher.c` as `-DROBOTERM_PY_VER` so the launcher locates the matching Homebrew Python at runtime (there is no hardcoded version in either file).
 
 ### Tests
 
@@ -32,10 +34,12 @@ Three tiers, each with different environment requirements:
 pytest tests/unit/
 
 # Integration tests — needs a real GTK4/VTE/PyGObject install
-PYTHONPATH=/opt/homebrew/lib/python3.13/site-packages python3.13 -m pytest tests/integration/
+PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" python3 -m pytest tests/integration/
 
 # UI/e2e tests — Linux only; drives a real app window via PyAutoGUI/xdotool inside
-# an Xvfb virtual display, spawned with `dbus-run-session python3.12 roboterm.py`.
+# an Xvfb virtual display, spawned with `dbus-run-session <python3> roboterm.py`.
+# The harness auto-detects a python3 that can import gi (override with
+# ROBOTERM_TEST_PYTHON=...); see _find_python_with_gi in tests/ui/conftest.py.
 # Needs the `ui-tests` extra (pyautogui, python-xlib, Pillow, pyvirtualdisplay) plus
 # xdotool/scrot/dbus on the host. Marked with `pytest.mark.ui`.
 pytest tests/ui/

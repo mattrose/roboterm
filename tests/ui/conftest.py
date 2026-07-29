@@ -8,6 +8,7 @@ launches roboterm via dbus-run-session and waits for its window.
 import os
 import signal
 import subprocess
+import sys
 import time
 
 import pytest
@@ -33,9 +34,43 @@ from tests.ui.helpers import WindowHelper, wait_for_window  # noqa: E402
 REPO_ROOT           = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 APP_STARTUP_TIMEOUT = 20.0
 
+
+def _find_python_with_gi() -> str:
+    """
+    Return a python3 executable that can import gi (PyGObject) — the app needs
+    it, and only some interpreters on the box have it installed.
+
+    Prefers $ROBOTERM_TEST_PYTHON if set, then the interpreter running the tests,
+    then plain `python3`, then `python3.N` for a range of minor versions. Fails
+    the test run (rather than crashing collection) if none is found.
+    """
+    candidates = [
+        os.environ.get("ROBOTERM_TEST_PYTHON"),
+        sys.executable,
+        "python3",
+    ]
+    candidates += [f"python3.{minor}" for minor in range(15, 8, -1)]  # 3.15 → 3.9
+
+    seen = set()
+    for exe in candidates:
+        if not exe or exe in seen:
+            continue
+        seen.add(exe)
+        try:
+            r = subprocess.run([exe, "-c", "import gi"], capture_output=True)
+        except OSError:
+            continue  # not on PATH / not executable
+        if r.returncode == 0:
+            return exe
+    return ""
+
+
+# Resolved once per session; empty if nothing suitable was found (the `app`
+# fixture turns that into a clear skip/failure rather than an import-time crash).
+PYTHON = _find_python_with_gi()
+
 # dbus-run-session wraps the app in a private D-Bus session, required by GTK4.
-# python3.12 is the version that has gi (PyGObject) installed on this system.
-APP_CMD = ["dbus-run-session", "python3.12", "roboterm.py"]
+APP_CMD = ["dbus-run-session", PYTHON, "roboterm.py"]
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -84,10 +119,16 @@ def app(tmp_path, virtual_display):
     env["HOME"]                  = str(tmp_path)
     env["GTK_DECORATION_LAYOUT"] = ":"      # no window buttons → hamburger flush at right edge
 
-    # start_new_session=True puts dbus-run-session and its children (including
-    # python3.12) in a new process group.  This lets teardown kill the entire
-    # group with os.killpg, preventing orphaned python3.12 processes from
-    # leaving stale "Terminal" windows that confuse wait_for_window.
+    if not PYTHON:
+        pytest.fail(
+            "No python3 with gi (PyGObject) found for UI tests. "
+            "Install PyGObject or set ROBOTERM_TEST_PYTHON to a suitable interpreter."
+        )
+
+    # start_new_session=True puts dbus-run-session and its children (the python
+    # interpreter running roboterm) in a new process group.  This lets teardown
+    # kill the entire group with os.killpg, preventing orphaned interpreter
+    # processes from leaving stale "Terminal" windows that confuse wait_for_window.
     proc = subprocess.Popen(
         APP_CMD,
         cwd=REPO_ROOT,
@@ -97,7 +138,7 @@ def app(tmp_path, virtual_display):
         start_new_session=True,
     )
 
-    # dbus-run-session forks, so proc.pid is dbus-run-session, not python3.12.
+    # dbus-run-session forks, so proc.pid is dbus-run-session, not the interpreter.
     # Wait for a window named "Terminal" to appear on the display.
     window_id = wait_for_window(name="Terminal", timeout=APP_STARTUP_TIMEOUT)
     if window_id is None:
