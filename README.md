@@ -63,6 +63,26 @@ make PYTHON=/opt/homebrew/bin/python3.13 app
 
 Remove the bundle with `make clean`.
 
+`make app` produces a lightweight bundle that still relies on the Homebrew GTK stack at runtime (see [Dependencies](#macos-homebrew)) — good for development on a machine that already has the dependencies.
+
+### Self-contained bundle (no Homebrew required)
+
+To build a fully self-contained `Roboterm.app` that runs on any Mac of the same CPU architecture with **no Homebrew installed**:
+
+```bash
+make bundle
+```
+
+On top of `make app`, this copies the entire native stack into the `.app` and rewrites every `install name` so nothing references `/opt/homebrew`:
+
+- the Python framework (interpreter + stdlib) and PyGObject/pycairo,
+- the full GTK4/VTE dylib closure,
+- the GObject-introspection typelibs, GSettings schemas, gdk-pixbuf loaders, and the Adwaita icon theme.
+
+The whole thing is then ad-hoc codesigned. The result is a ~125 MB, distributable bundle (see `macos/bundle_deps.py`). Because it is ad-hoc signed rather than notarized with a Developer ID, on another Mac the first launch needs a right-click → **Open** (or removing the quarantine attribute).
+
+The launcher detects at runtime whether the bundled stack is present: `make bundle` bundles use it, while `make app` bundles fall back to Homebrew — so a single launcher covers both.
+
 ### Installing to Applications
 
 Move the built bundle into your Applications folder so it shows up in Launchpad and Spotlight:
@@ -71,7 +91,7 @@ Move the built bundle into your Applications folder so it shows up in Launchpad 
 mv Roboterm.app /Applications/
 ```
 
-The app still relies on the Homebrew GTK stack at runtime (see [Dependencies](#macos-homebrew)), so keep those packages installed. After moving it, launch it from the Dock, Launchpad, or `open /Applications/Roboterm.app`.
+A `make app` bundle keeps needing the Homebrew packages installed; a `make bundle` bundle is standalone. Launch it from the Dock, Launchpad, or `open /Applications/Roboterm.app`.
 
 ## Keyboard Shortcuts
 
