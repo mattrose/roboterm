@@ -15,9 +15,16 @@ PY_INC     := $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_path("
 PY_LIBDIR  := $(shell $(PYTHON) -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))' 2>/dev/null)
 PY_LIB     := $(PY_LIBDIR)/libpython$(PY_VERSION).dylib
 
-.PHONY: app clean
+.PHONY: app bundle clean
 
 app: clean $(APP)
+
+# Self-contained bundle: build the app, then copy + relocate the entire native
+# stack (Python framework, GTK4/VTE dylibs, typelibs, schemas, icons) into it so
+# it runs on a Mac with no Homebrew. Uses the same $(PYTHON) the app was built
+# against. See macos/bundle_deps.py.
+bundle: app
+	$(PYTHON) macos/bundle_deps.py $(APP)
 
 $(APP): roboterm.py $(PY_FILES) macos/launcher.c macos/Info.plist macos/create_icon.py
 	@test -n "$(PY_VERSION)" || { \

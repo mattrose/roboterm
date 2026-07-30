@@ -20,10 +20,15 @@ PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))
 
 ```bash
 make app     # produces Roboterm.app (native C launcher embeds libpython so the Dock shows "Roboterm", not "Python")
+make bundle  # make app + copy/relocate the whole native stack in → self-contained .app (no Homebrew at runtime)
 make clean
 ```
 
-The Makefile detects the `python3` on `PATH` and derives the version, include dir, and libpython it embeds via `sysconfig` — it fails with a message if that interpreter is missing or older than Python 3. Build against a different interpreter with `make PYTHON=/opt/homebrew/bin/python3.13`. The detected version is passed to `macos/launcher.c` as `-DROBOTERM_PY_VER` so the launcher locates the matching Homebrew Python at runtime (there is no hardcoded version in either file).
+The Makefile detects the `python3` on `PATH` and derives the version, include dir, and libpython it embeds via `sysconfig` — it fails with a message if that interpreter is missing or older than Python 3. Build against a different interpreter with `make PYTHON=/opt/homebrew/bin/python3.13`. The detected version is passed to `macos/launcher.c` as `-DROBOTERM_PY_VER` so the launcher locates the matching Python at runtime (there is no hardcoded version in either file).
+
+`make app` builds a bundle that still points at the Homebrew stack at runtime (fast, for development). `make bundle` runs `macos/bundle_deps.py` on top of it to copy the Python framework, the GTK4/VTE dylib closure, PyGObject/pycairo, typelibs, GSettings schemas, gdk-pixbuf loaders and the Adwaita icon theme into the `.app`, rewrite every `install name` off `/opt/homebrew`, and ad-hoc codesign — producing a distributable, dependency-free bundle. `launcher.c` detects at runtime whether `Contents/Frameworks/Python.framework` exists and roots all paths (`PYTHONHOME`, `GI_TYPELIB_PATH`, `DYLD_LIBRARY_PATH`, schema/pixbuf/icon dirs) inside the bundle when it does, else falls back to Homebrew — so one launcher serves both build modes. Key bundling subtleties `bundle_deps.py` handles (each learned from a concrete failure): dylibs are named by their versioned install-id soname (so `@rpath/libgtk-4.1.dylib` resolves); the dependency closure follows `@loader_path`/`@rpath` deps too (Homebrew's ICU libs reference siblings relatively — miss this and `libvte` fails to load); typelib shared-libraries are seeded as extra roots (Gtk/Adw/Vte are `dlopen`'d via typelibs, not linked); Homebrew's own `LC_RPATH` entries are stripped (else `@rpath` deps resolve to the Homebrew copy, causing duplicate-type-system clashes); and the gdk-pixbuf `loaders.cache` is regenerated from the *original* loaders (querying the relocated copies SIGKILLs on the invalidated signature).
+
+Note: launching the built binary directly from a shell (`./Roboterm.app/Contents/MacOS/Roboterm`) can crash in VTE's child-spawn fd walk due to inherited shell file descriptors; launch via `open Roboterm.app` (the real path) to test.
 
 ### Tests
 
