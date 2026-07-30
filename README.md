@@ -47,6 +47,32 @@ PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))
 
 This points `PYTHONPATH` at the `gi`/GTK bindings installed for whichever `python3` you run (any Python 3). On Linux with `python3-gi` installed system-wide, plain `python3 roboterm.py` usually works with no `PYTHONPATH`.
 
+## Building the macOS app bundle
+
+To build `Roboterm.app` — a native `.app` with a C launcher that embeds libpython, so the Dock shows "Roboterm" instead of "Python":
+
+```bash
+make app
+```
+
+This detects the `python3` on your `PATH` and builds against it, deriving the version, include dir, and libpython from `sysconfig` (no hardcoded version). To build against a specific interpreter:
+
+```bash
+make PYTHON=/opt/homebrew/bin/python3.13 app
+```
+
+Remove the bundle with `make clean`.
+
+### Installing to Applications
+
+Move the built bundle into your Applications folder so it shows up in Launchpad and Spotlight:
+
+```bash
+mv Roboterm.app /Applications/
+```
+
+The app still relies on the Homebrew GTK stack at runtime (see [Dependencies](#macos-homebrew)), so keep those packages installed. After moving it, launch it from the Dock, Launchpad, or `open /Applications/Roboterm.app`.
+
 ## Keyboard Shortcuts
 
 Defaults below; every shortcut except Copy/Paste can be rebound from the Preferences window's Keybindings tab.
