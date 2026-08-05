@@ -77,15 +77,23 @@ int main(int argc, char *argv[]) {
     snprintf(buf, sizeof(buf), "%s/lib/girepository-1.0", base);
     setenv("GI_TYPELIB_PATH", buf, 1);
 
-    if (bundled) {
-        /* Regenerated loaders.cache stores paths relative to this dir. */
-        snprintf(buf, sizeof(buf), "%s/lib/gdk-pixbuf-2.0/2.10.0", base);
-        setenv("GDK_PIXBUF_MODULEDIR", buf, 1);
-    }
-
     /* GTK4 dylibs — gi typelibs dlopen these by bare name */
     snprintf(buf, sizeof(buf), "%s/lib", base);
     prepend_env("DYLD_LIBRARY_PATH", buf);
+
+    if (bundled) {
+        /*
+         * gdk-pixbuf's loaders.cache lists each loader by the relative path
+         * "loaders/libpixbufloader_*.so". gdk-pixbuf 2.44 hands that straight to
+         * dlopen without rooting it at the cache directory, and no longer honours
+         * GDK_PIXBUF_MODULEDIR — so inside the bundle the loaders resolve only via
+         * dyld's DYLD_LIBRARY_PATH leaf substitution. Put the loaders dir on the
+         * path so the bare "libpixbufloader_*.so" leaf is found wherever the .app
+         * lives (Homebrew mode is unaffected: its cache uses absolute paths).
+         */
+        snprintf(buf, sizeof(buf), "%s/lib/gdk-pixbuf-2.0/2.10.0/loaders", base);
+        prepend_env("DYLD_LIBRARY_PATH", buf);
+    }
 
     /* ── Embed Python and run the script ── */
     PyConfig config;

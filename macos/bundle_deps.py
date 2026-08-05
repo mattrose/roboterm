@@ -263,8 +263,10 @@ def copy_pixbuf_loaders(libdest):
     # Build the cache from the ORIGINAL loaders (valid signatures) — querying the
     # relocated copies would dlopen them, and install_name_tool has invalidated
     # their signatures, so macOS SIGKILLs the query. Rewrite the absolute loader
-    # paths to be relative to the 2.10.0 dir; the launcher points
-    # GDK_PIXBUF_MODULEDIR there so they resolve wherever the .app lives.
+    # paths to the bare "loaders/NAME.so"; the launcher puts the loaders dir on
+    # DYLD_LIBRARY_PATH so dyld resolves each leaf wherever the .app lives.
+    # (gdk-pixbuf 2.44 no longer honours GDK_PIXBUF_MODULEDIR, and does not root a
+    # relative cache entry at the cache dir — so leaf resolution is what works.)
     query = os.path.join(BREW, "bin", "gdk-pixbuf-query-loaders")
     out = subprocess.run([query] + [os.path.join(src_dir, f) for f in loaders],
                          capture_output=True, text=True, check=True).stdout
