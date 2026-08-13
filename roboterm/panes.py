@@ -30,7 +30,7 @@ class PaneFrame(Gtk.Box):
         self.append(self._titlebar)
         self.append(terminal)
 
-        terminal.vte.connect("window-title-changed", self._on_title_changed)
+        terminal.connect("title-changed", self._on_title_changed)
         terminal.connect("focus-grabbed", self._on_focus)
 
     @property
@@ -49,8 +49,8 @@ class PaneFrame(Gtk.Box):
         else:
             self._titlebar.remove_css_class("focused")
 
-    def _on_title_changed(self, vte) -> None:
-        self._title_label.set_label(vte.props.window_title or "Terminal")
+    def _on_title_changed(self, terminal) -> None:
+        self._title_label.set_label(terminal.title or "Terminal")
 
     def _on_focus(self, _terminal) -> None:
         pass
@@ -60,15 +60,18 @@ class PaneManager(Gtk.Box):
     """Manages a tree of Gtk.Paned splits containing PaneFrames.
 
     Emits:
-        all-closed()  — fired when the last pane is closed
-        new-tab()     — forwarded from any terminal's context menu
-        new-window()  — forwarded from any terminal's context menu
+        all-closed()    — fired when the last pane is closed
+        new-tab()       — forwarded from any terminal's context menu
+        new-window()    — forwarded from any terminal's context menu
+        title-changed() — the active pane's title changed, or focus moved to a
+                          pane with a different title
     """
 
     __gsignals__ = {
-        "all-closed":  (GObject.SignalFlags.RUN_LAST, None, ()),
-        "new-tab":     (GObject.SignalFlags.RUN_LAST, None, ()),
-        "new-window":  (GObject.SignalFlags.RUN_LAST, None, ()),
+        "all-closed":    (GObject.SignalFlags.RUN_LAST, None, ()),
+        "new-tab":       (GObject.SignalFlags.RUN_LAST, None, ()),
+        "new-window":    (GObject.SignalFlags.RUN_LAST, None, ()),
+        "title-changed": (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
     def __init__(self):
@@ -96,6 +99,11 @@ class PaneManager(Gtk.Box):
     @property
     def active(self) -> TerminalWidget | None:
         return self._active
+
+    @property
+    def title(self) -> str:
+        """Title of the active pane, or "" if it has reported none."""
+        return self._active.title if self._active else ""
 
     def split_active(self, orientation: Gtk.Orientation) -> None:
         if self._active is None:
@@ -163,6 +171,7 @@ class PaneManager(Gtk.Box):
         t = TerminalWidget()
         t.connect("focus-grabbed", self._on_focus_grabbed)
         t.connect("child-exited",  self._on_child_exited)
+        t.connect("title-changed", self._on_term_title_changed)
         t.connect("split-auto",    lambda term:  self._split_auto_specific(term))
         t.connect("split-right",   lambda term:  self._split_specific(term, Gtk.Orientation.HORIZONTAL))
         t.connect("split-down",    lambda term:  self._split_specific(term, Gtk.Orientation.VERTICAL))
@@ -209,6 +218,7 @@ class PaneManager(Gtk.Box):
 
             if self._active is term:
                 self._active = None
+                self.emit("title-changed")
             self._update_titlebars()
             first_leaf = self._first_leaf(survivor)
             if first_leaf:
@@ -263,8 +273,15 @@ class PaneManager(Gtk.Box):
             frame.set_focused(frame is active_frame)
 
     def _on_focus_grabbed(self, term: TerminalWidget) -> None:
+        changed = term is not self._active
         self._active = term
         self._update_titlebars()
+        if changed:
+            self.emit("title-changed")
+
+    def _on_term_title_changed(self, term: TerminalWidget) -> None:
+        if term is self._active:
+            self.emit("title-changed")
 
     def _on_child_exited(self, term: TerminalWidget, _status: int) -> None:
         self._close_specific(term)

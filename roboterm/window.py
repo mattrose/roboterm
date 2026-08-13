@@ -15,7 +15,10 @@ class TabLabel(Gtk.Box):
     def __init__(self, title: str):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
 
+        self._default_title = title
         self._label = Gtk.Label(label=title)
+        self._label.set_ellipsize(3)   # Pango.EllipsizeMode.END
+        self._label.set_max_width_chars(24)
         self.append(self._label)
 
         btn = Gtk.Button()
@@ -27,7 +30,12 @@ class TabLabel(Gtk.Box):
         self.append(btn)
 
     def set_title(self, title: str) -> None:
-        self._label.set_label(title)
+        """Show *title*, falling back to the tab's original name when empty."""
+        self._label.set_label(title or self._default_title)
+
+    @property
+    def title(self) -> str:
+        return self._label.get_label()
 
 
 class TerminalWindow(Adw.ApplicationWindow):
@@ -107,9 +115,10 @@ class TerminalWindow(Adw.ApplicationWindow):
         title = f"Terminal {self._tab_count}"
 
         panes = PaneManager()
-        panes.connect("all-closed", self._on_tab_all_closed)
-        panes.connect("new-tab",    lambda _p: self._new_tab())
-        panes.connect("new-window", lambda _p: self.get_application().new_window())
+        panes.connect("all-closed",    self._on_tab_all_closed)
+        panes.connect("new-tab",       lambda _p: self._new_tab())
+        panes.connect("new-window",    lambda _p: self.get_application().new_window())
+        panes.connect("title-changed", self._on_panes_title_changed)
 
         label = TabLabel(title)
         label.connect("close-clicked", lambda _lbl, p=panes: self._close_tab_for_panes(p))
@@ -118,6 +127,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         self._notebook.set_tab_reorderable(panes, True)
         self._notebook.set_current_page(idx)
         self._update_tab_bar_visibility()
+        self._update_window_title()
         panes.focus_active()
 
     def _close_tab_for_panes(self, panes: PaneManager) -> None:
@@ -129,13 +139,30 @@ class TerminalWindow(Adw.ApplicationWindow):
             self.get_application().quit()
         else:
             self._update_tab_bar_visibility()
+            self._update_window_title()
 
     def _on_tab_all_closed(self, panes: PaneManager) -> None:
         self._close_tab_for_panes(panes)
 
     def _on_switch_page(self, _nb, page, _idx) -> None:
         if isinstance(page, PaneManager):
+            self._update_window_title(page)
             page.focus_active()
+
+    # ── Titles ────────────────────────────────────────────────────────────────
+
+    def _on_panes_title_changed(self, panes: PaneManager) -> None:
+        label = self._notebook.get_tab_label(panes)
+        if isinstance(label, TabLabel):
+            label.set_title(panes.title)
+        if panes is self._active_panes():
+            self._update_window_title(panes)
+
+    def _update_window_title(self, panes: PaneManager | None = None) -> None:
+        if panes is None:
+            panes = self._active_panes()
+        title = panes.title if isinstance(panes, PaneManager) else ""
+        self.set_title(title or "Terminal")
 
     def _active_panes(self) -> PaneManager | None:
         return self._notebook.get_nth_page(self._notebook.get_current_page())

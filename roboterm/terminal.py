@@ -11,12 +11,24 @@ _URL_PATTERN = r"https?://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]"
 from .settings import Settings
 
 
+def _title_for_directory(path: str) -> str:
+    """Short, human-readable title for a shell sitting in *path*."""
+    home = os.path.expanduser("~")
+    if path == home:
+        return "~"
+    trimmed = path.rstrip("/")
+    if not trimmed:
+        return "/"
+    return os.path.basename(trimmed)
+
+
 class TerminalWidget(Gtk.ScrolledWindow):
     """A self-contained VTE terminal wrapped in a ScrolledWindow.
 
     Emits:
         child-exited(status)  — forwarded from Vte.Terminal
         focus-grabbed()       — fired when the inner VTE receives focus
+        title-changed()       — the shell changed the title (OSC 0/2) or its cwd
         split-right()         — user chose "Split Right" from context menu
         split-down()          — user chose "Split Down" from context menu
         close-pane()          — user chose "Close Pane" from context menu
@@ -24,6 +36,7 @@ class TerminalWidget(Gtk.ScrolledWindow):
 
     __gsignals__ = {
         "child-exited":  (GObject.SignalFlags.RUN_LAST, None, (int,)),
+        "title-changed": (GObject.SignalFlags.RUN_LAST, None, ()),
         "focus-grabbed": (GObject.SignalFlags.RUN_LAST, None, ()),
         "split-right":   (GObject.SignalFlags.RUN_LAST, None, ()),
         "split-down":    (GObject.SignalFlags.RUN_LAST, None, ()),
@@ -56,6 +69,11 @@ class TerminalWidget(Gtk.ScrolledWindow):
         settings.connect_changed(_on_settings_changed)
 
         self._vte.connect("child-exited", self._on_child_exited)
+
+        self._title = ""
+        self._vte.connect("window-title-changed", lambda _v: self._refresh_title())
+        self._vte.connect("notify::current-directory-uri",
+                          lambda _v, _p: self._refresh_title())
 
         focus_ctrl = Gtk.EventControllerFocus()
         focus_ctrl.connect("enter", lambda _ec: self.emit("focus-grabbed"))
@@ -110,7 +128,31 @@ class TerminalWidget(Gtk.ScrolledWindow):
     def vte(self) -> Vte.Terminal:
         return self._vte
 
+    @property
+    def title(self) -> str:
+        """Title reported by the shell, or "" if it has reported none."""
+        return self._title
+
     # ── Private ───────────────────────────────────────────────────────────────
+
+    def _refresh_title(self) -> None:
+        title = self._compute_title()
+        if title != self._title:
+            self._title = title
+            self.emit("title-changed")
+
+    def _compute_title(self) -> str:
+        """Prefer the OSC 0/2 window title; fall back to the OSC 7 cwd."""
+        if title := (self._vte.props.window_title or "").strip():
+            return title
+        uri = self._vte.props.current_directory_uri
+        if uri:
+            try:
+                path, _host = GLib.filename_from_uri(uri)
+            except (GLib.Error, TypeError):
+                return ""
+            return _title_for_directory(path)
+        return ""
 
     def _build_context_menu(self) -> None:
         self._menu_with_url    = self._make_menu_model(has_url=True)
