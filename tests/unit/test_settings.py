@@ -2,7 +2,7 @@ import json
 import pytest
 from unittest.mock import MagicMock
 
-from roboterm.settings import Settings, THEMES, _rgba_to_hex
+from roboterm.settings import Settings, THEMES, _default_keybindings, _rgba_to_hex
 
 
 @pytest.fixture(autouse=True)
@@ -162,6 +162,32 @@ class TestCallbacks:
         Settings.get().connect_changed(lambda: calls.append(1))
         Settings.get().apply_theme("Dracula")
         assert calls == [1]
+
+
+# ── Keybindings ───────────────────────────────────────────────────────────────
+
+class TestKeybindings:
+    def test_maximize_pane_has_a_default(self, tmp_config):
+        assert Settings.get().get_keybindings()["maximize-pane"]
+
+    def test_maximize_pane_default_matches_platform(self, tmp_config):
+        import roboterm.settings as settings_mod
+        expected = "<Meta>x" if settings_mod._MACOS else "<Control><Shift>x"
+        assert Settings.get().get_keybindings()["maximize-pane"] == expected
+
+    def test_defaults_have_no_duplicate_accelerators(self, tmp_config):
+        accels = [a for a in _default_keybindings().values() if a]
+        assert len(accels) == len(set(accels))
+
+    def test_maximize_pane_can_be_rebound(self, tmp_config):
+        s = Settings.get()
+        s.set_value("keybindings", {"maximize-pane": "<Control>z"})
+        assert s.get_keybindings()["maximize-pane"] == "<Control>z"
+
+    def test_rebinding_one_action_keeps_the_others(self, tmp_config):
+        s = Settings.get()
+        s.set_value("keybindings", {"maximize-pane": "<Control>z"})
+        assert s.get_keybindings()["new-tab"] == _default_keybindings()["new-tab"]
 
 
 # ── apply_theme ───────────────────────────────────────────────────────────────

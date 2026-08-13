@@ -58,6 +58,10 @@ class TerminalWindow(Adw.ApplicationWindow):
         split_section.append("Split Down",  "win.split-down")
         menu_model.append_section(None, split_section)
 
+        maximize_section = Gio.Menu()
+        maximize_section.append("Toggle Maximize", "win.maximize-pane")
+        menu_model.append_section(None, maximize_section)
+
         rotate_section = Gio.Menu()
         rotate_section.append("Rotate Clockwise",        "win.rotate-cw")
         rotate_section.append("Rotate Counterclockwise", "win.rotate-ccw")
@@ -77,6 +81,7 @@ class TerminalWindow(Adw.ApplicationWindow):
             "split-auto":  lambda: self._active_panes().split_auto(),
             "split-right": lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL),
             "split-down":  lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL),
+            "maximize-pane": lambda: self._active_panes().toggle_maximize_active(),
             "rotate-cw":   lambda: self._active_panes().rotate_cw(),
             "rotate-ccw":  lambda: self._active_panes().rotate_ccw(),
             "close-pane":  lambda: self._active_panes().close_active(),
@@ -193,6 +198,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         add("split-right", with_panes(lambda p: p.split_active(Gtk.Orientation.HORIZONTAL)))
         add("split-down",  with_panes(lambda p: p.split_active(Gtk.Orientation.VERTICAL)))
         add("split-auto",  with_panes(lambda p: p.split_auto()))
+        add("maximize-pane", with_panes(lambda p: p.toggle_maximize_active()))
         add("rotate-cw",   with_panes(lambda p: p.rotate_cw()))
         add("rotate-ccw",  with_panes(lambda p: p.rotate_ccw()))
         add("prev-tab",    self._notebook.prev_page)
@@ -233,6 +239,7 @@ class TerminalWindow(Adw.ApplicationWindow):
             "split-auto":  lambda: (p := self._active_panes()) and p.split_auto(),
             "split-right": lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
             "split-down":  lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
+            "maximize-pane": lambda: (p := self._active_panes()) and p.toggle_maximize_active(),
             "prev-tab":    self._notebook.prev_page,
             "next-tab":    self._notebook.next_page,
             "rotate-cw":   lambda: (p := self._active_panes()) and p.rotate_cw(),

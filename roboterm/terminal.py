@@ -32,6 +32,7 @@ class TerminalWidget(Gtk.ScrolledWindow):
         split-right()         — user chose "Split Right" from context menu
         split-down()          — user chose "Split Down" from context menu
         close-pane()          — user chose "Close Pane" from context menu
+        maximize-pane()       — user chose "Toggle Maximize" from context menu
     """
 
     __gsignals__ = {
@@ -46,6 +47,7 @@ class TerminalWidget(Gtk.ScrolledWindow):
         "split-auto":    (GObject.SignalFlags.RUN_LAST, None, ()),
         "rotate-cw":     (GObject.SignalFlags.RUN_LAST, None, ()),
         "rotate-ccw":    (GObject.SignalFlags.RUN_LAST, None, ()),
+        "maximize-pane": (GObject.SignalFlags.RUN_LAST, None, ()),
     }
 
     def __init__(self):
@@ -178,14 +180,15 @@ class TerminalWidget(Gtk.ScrolledWindow):
         ag.add_action(paste_action)
 
         for name, signal in (
-            ("new-window",  "new-window"),
-            ("new-tab",     "new-tab"),
-            ("split-auto",  "split-auto"),
-            ("split-right", "split-right"),
-            ("split-down",  "split-down"),
-            ("rotate-cw",   "rotate-cw"),
-            ("rotate-ccw",  "rotate-ccw"),
-            ("close-pane",  "close-pane"),
+            ("new-window",    "new-window"),
+            ("new-tab",       "new-tab"),
+            ("split-auto",    "split-auto"),
+            ("split-right",   "split-right"),
+            ("split-down",    "split-down"),
+            ("maximize-pane", "maximize-pane"),
+            ("rotate-cw",     "rotate-cw"),
+            ("rotate-ccw",    "rotate-ccw"),
+            ("close-pane",    "close-pane"),
         ):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", lambda _a, _p, sig=signal: self.emit(sig))
@@ -216,9 +219,10 @@ class TerminalWidget(Gtk.ScrolledWindow):
         tab_sec.append("New Tab",    "term.new-tab")
         menu.append_section(None, tab_sec)
         split_sec = Gio.Menu()
-        split_sec.append("Split Auto",  "term.split-auto")
-        split_sec.append("Split Right", "term.split-right")
-        split_sec.append("Split Down",  "term.split-down")
+        split_sec.append("Split Auto",      "term.split-auto")
+        split_sec.append("Split Right",     "term.split-right")
+        split_sec.append("Split Down",      "term.split-down")
+        split_sec.append("Toggle Maximize", "term.maximize-pane")
         menu.append_section(None, split_sec)
         rotate_sec = Gio.Menu()
         rotate_sec.append("Rotate Clockwise",        "term.rotate-cw")

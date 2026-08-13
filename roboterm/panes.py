@@ -26,6 +26,11 @@ class PaneFrame(Gtk.Box):
         self._title_label.add_css_class("terminal-title-label")
         self._titlebar.append(self._title_label)
 
+        self._maximized_icon = Gtk.Image.new_from_icon_name("view-fullscreen-symbolic")
+        self._maximized_icon.set_tooltip_text("Pane is maximized")
+        self._maximized_icon.set_visible(False)
+        self._titlebar.append(self._maximized_icon)
+
         self._titlebar.set_visible(False)
         self.append(self._titlebar)
         self.append(terminal)
@@ -42,6 +47,9 @@ class PaneFrame(Gtk.Box):
 
     def hide_titlebar(self) -> None:
         self._titlebar.set_visible(False)
+
+    def set_maximized(self, maximized: bool) -> None:
+        self._maximized_icon.set_visible(maximized)
 
     def set_focused(self, focused: bool) -> None:
         if focused:
@@ -80,6 +88,8 @@ class PaneManager(Gtk.Box):
         self.set_hexpand(True)
 
         self._active: TerminalWidget | None = None
+        # (detached tree root, owning Paned, "start"|"end", maximized frame)
+        self._maximized: tuple | None = None
 
         first = self._make_frame()
         self.append(first)
@@ -105,9 +115,14 @@ class PaneManager(Gtk.Box):
         """Title of the active pane, or "" if it has reported none."""
         return self._active.title if self._active else ""
 
+    @property
+    def maximized(self) -> bool:
+        return self._maximized is not None
+
     def split_active(self, orientation: Gtk.Orientation) -> None:
         if self._active is None:
             return
+        self.unmaximize(refocus=False)
 
         old_frame = self._active.get_parent()
         parent    = old_frame.get_parent()
@@ -161,11 +176,67 @@ class PaneManager(Gtk.Box):
             return
         self._close_specific(self._active)
 
+    def toggle_maximize_active(self) -> None:
+        """Blow the active pane up to fill the tab, or restore the split view."""
+        if self._maximized is not None:
+            self.unmaximize()
+        elif self._active is not None:
+            self._maximize(self._active.get_parent())
+
+    def unmaximize(self, refocus: bool = True) -> None:
+        """Put a maximized pane back into the split tree.  No-op otherwise.
+
+        Callers that mutate the tree straight afterwards (split/rotate/close)
+        pass refocus=False, since they decide what ends up focused.
+        """
+        if self._maximized is None:
+            return
+        root, paned, side, frame = self._maximized
+        self._maximized = None
+
+        self.remove(frame)
+        frame.set_maximized(False)
+        if side == "start":
+            paned.set_start_child(frame)
+        else:
+            paned.set_end_child(frame)
+        self.append(root)
+
+        self._update_titlebars()
+        if refocus:
+            GLib.idle_add(frame.terminal.grab_focus)
+
     def focus_active(self) -> None:
         if self._active:
             GLib.idle_add(self._active.grab_focus)
 
     # ── Private ───────────────────────────────────────────────────────────────
+
+    def _maximize(self, frame: PaneFrame) -> None:
+        paned = frame.get_parent()
+        if not isinstance(paned, Gtk.Paned):
+            return          # a lone pane already fills the tab
+
+        side = "start" if paned.get_start_child() is frame else "end"
+        root = self.get_first_child()
+
+        if side == "start":
+            paned.set_start_child(None)
+        else:
+            paned.set_end_child(None)
+        self.remove(root)
+
+        # `root` is kept alive by this tuple while it is out of the widget tree.
+        self._maximized = (root, paned, side, frame)
+        frame.set_maximized(True)
+        self.append(frame)
+
+        self._update_titlebars()
+        GLib.idle_add(frame.terminal.grab_focus)
+
+    def _root(self):
+        """Root of the split tree, whether or not a pane is maximized."""
+        return self._maximized[0] if self._maximized else self.get_first_child()
 
     def _make_frame(self) -> PaneFrame:
         t = TerminalWidget()
@@ -178,6 +249,7 @@ class PaneManager(Gtk.Box):
         t.connect("close-pane",    lambda term:  self._close_specific(term))
         t.connect("rotate-cw",     lambda _term: self.rotate_cw())
         t.connect("rotate-ccw",    lambda _term: self.rotate_ccw())
+        t.connect("maximize-pane", lambda term:  self._toggle_maximize_specific(term))
         t.connect("new-tab",       lambda _term: self.emit("new-tab"))
         t.connect("new-window",    lambda _term: self.emit("new-window"))
         return PaneFrame(t)
@@ -190,7 +262,13 @@ class PaneManager(Gtk.Box):
         self._active = term
         self.split_active(orientation)
 
+    def _toggle_maximize_specific(self, term: TerminalWidget) -> None:
+        if self._maximized is None:
+            self._active = term
+        self.toggle_maximize_active()
+
     def _close_specific(self, term: TerminalWidget) -> None:
+        self.unmaximize(refocus=False)
         old_frame = term.get_parent()
         parent    = old_frame.get_parent()
 
@@ -227,6 +305,7 @@ class PaneManager(Gtk.Box):
             self.emit("all-closed")
 
     def _rotate(self, step: int) -> None:
+        self.unmaximize(refocus=False)
         root  = self.get_first_child()
         slots = self._collect_slots(root)
         n     = len(slots)
@@ -256,7 +335,10 @@ class PaneManager(Gtk.Box):
             GLib.idle_add(active_term.grab_focus)
 
     def _update_titlebars(self) -> None:
-        frames  = self._collect_frames(self.get_first_child())
+        frames  = self._collect_frames(self._root())
+        if self._maximized:
+            # The maximized frame is detached from the tree, so add it back in.
+            frames.append(self._maximized[3])
         setting = Settings.get().get_value("pane_titlebar")
         if setting == "always":
             visible = True
