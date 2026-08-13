@@ -3,17 +3,18 @@ from gi.repository import Gtk, Adw, Gdk, Pango
 from .settings import Settings, THEMES, _rgba_to_hex
 
 _ACTIONS = [
-    ("preferences", "Preferences"),
-    ("new-window",  "New Window"),
-    ("new-tab",     "New Tab"),
-    ("close-pane",  "Close Pane"),
-    ("split-auto",  "Split Auto"),
-    ("split-right", "Split Right"),
-    ("split-down",  "Split Down"),
-    ("prev-tab",    "Previous Tab"),
-    ("next-tab",    "Next Tab"),
-    ("rotate-cw",   "Rotate Clockwise"),
-    ("rotate-ccw",  "Rotate Counter-Clockwise"),
+    ("preferences",   "Preferences"),
+    ("new-window",    "New Window"),
+    ("new-tab",       "New Tab"),
+    ("close-pane",    "Close Pane"),
+    ("split-auto",    "Split Auto"),
+    ("split-right",   "Split Right"),
+    ("split-down",    "Split Down"),
+    ("maximize-pane", "Toggle Maximize"),
+    ("prev-tab",      "Previous Tab"),
+    ("next-tab",      "Next Tab"),
+    ("rotate-cw",     "Rotate Clockwise"),
+    ("rotate-ccw",    "Rotate Counter-Clockwise"),
 ]
 
 _MODIFIER_KEYS = frozenset({
