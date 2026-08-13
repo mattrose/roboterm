@@ -3,9 +3,45 @@ import sys
 
 from gi.repository import Gtk, Adw, Gdk, Gio, GLib
 
+from .settings import Settings
 from .window import TerminalWindow
 
 _MACOS = sys.platform == "darwin"
+
+# Menu items whose shortcut label comes from the matching keybinding.
+_MENU_ACCEL_ACTIONS = {
+    "preferences": "win.preferences",
+    "new-window":  "app.new-window",
+    "new-tab":     "win.new-tab",
+    "close-pane":  "win.close-pane",
+    "split-auto":  "win.split-auto",
+    "split-right": "win.split-right",
+    "split-down":  "win.split-down",
+    "rotate-cw":   "win.rotate-cw",
+    "rotate-ccw":  "win.rotate-ccw",
+    "prev-tab":    "win.prev-tab",
+    "next-tab":    "win.next-tab",
+}
+
+# Copy/Paste are handled in TerminalWidget._on_key_pressed and are not part of
+# the customizable keybindings, so their labels stay fixed.
+_FIXED_MENU_ACCELS = {
+    "win.copy":  ["<Meta>c"],
+    "win.paste": ["<Meta>v"],
+}
+
+
+def _menu_accels(keybindings: dict) -> dict:
+    """{menu action: [accelerator]} for the macOS menu bar's shortcut labels.
+
+    A disabled (empty) keybinding yields no accelerator, so the menu item
+    shows no shortcut rather than a stale one.
+    """
+    accels = dict(_FIXED_MENU_ACCELS)
+    for name, action in _MENU_ACCEL_ACTIONS.items():
+        accel = keybindings.get(name, "")
+        accels[action] = [accel] if accel else []
+    return accels
 
 
 class TerminalApp(Adw.Application):
@@ -54,19 +90,8 @@ class TerminalApp(Adw.Application):
         self.add_action(new_win)
 
         # Accelerators — displayed in menu labels; key handling is the CAPTURE handler
-        self.set_accels_for_action("win.preferences",  ["<Meta>comma"])
-        self.set_accels_for_action("app.new-window",   ["<Meta>n"])
-        self.set_accels_for_action("win.new-tab",      ["<Meta>t"])
-        self.set_accels_for_action("win.close-pane",   ["<Meta>w"])
-        self.set_accels_for_action("win.copy",         ["<Meta>c"])
-        self.set_accels_for_action("win.paste",        ["<Meta>v"])
-        self.set_accels_for_action("win.split-right",  ["<Meta>d"])
-        self.set_accels_for_action("win.split-down",   ["<Meta><Shift>d"])
-        self.set_accels_for_action("win.split-auto",   ["<Meta>a"])
-        self.set_accels_for_action("win.rotate-cw",    ["<Meta><Alt>bracketright"])
-        self.set_accels_for_action("win.rotate-ccw",   ["<Meta><Alt>bracketleft"])
-        self.set_accels_for_action("win.prev-tab",     ["<Meta><Shift>bracketleft"])
-        self.set_accels_for_action("win.next-tab",     ["<Meta><Shift>bracketright"])
+        self._refresh_menu_accels()
+        Settings.get().connect_changed(self._refresh_menu_accels)
 
         # ── Menu structure ───────────────────────────────────────────────────
         menubar = Gio.Menu()
@@ -113,3 +138,8 @@ class TerminalApp(Adw.Application):
         menubar.append_submenu("Window", win_menu)
 
         self.set_menubar(menubar)
+
+    def _refresh_menu_accels(self) -> None:
+        """Relabel the menu bar from the live keybindings, user overrides included."""
+        for action, accels in _menu_accels(Settings.get().get_keybindings()).items():
+            self.set_accels_for_action(action, accels)
