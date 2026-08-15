@@ -10,17 +10,18 @@ _MACOS = sys.platform == "darwin"
 
 # Menu items whose shortcut label comes from the matching keybinding.
 _MENU_ACCEL_ACTIONS = {
-    "preferences": "win.preferences",
-    "new-window":  "app.new-window",
-    "new-tab":     "win.new-tab",
-    "close-pane":  "win.close-pane",
-    "split-auto":  "win.split-auto",
-    "split-right": "win.split-right",
-    "split-down":  "win.split-down",
-    "rotate-cw":   "win.rotate-cw",
-    "rotate-ccw":  "win.rotate-ccw",
-    "prev-tab":    "win.prev-tab",
-    "next-tab":    "win.next-tab",
+    "preferences":   "win.preferences",
+    "new-window":    "app.new-window",
+    "new-tab":       "win.new-tab",
+    "close-pane":    "win.close-pane",
+    "split-auto":    "win.split-auto",
+    "split-right":   "win.split-right",
+    "split-down":    "win.split-down",
+    "maximize-pane": "win.maximize-pane",
+    "rotate-cw":     "win.rotate-cw",
+    "rotate-ccw":    "win.rotate-ccw",
+    "prev-tab":      "win.prev-tab",
+    "next-tab":      "win.next-tab",
 }
 
 # Copy/Paste are handled in TerminalWidget._on_key_pressed and are not part of
@@ -123,6 +124,9 @@ class TerminalApp(Adw.Application):
         split_sec.append("Split Down",  "win.split-down")
         split_sec.append("Split Auto",  "win.split-auto")
         view_menu.append_section(None, split_sec)
+        maximize_sec = Gio.Menu()
+        maximize_sec.append("Toggle Maximize", "win.maximize-pane")
+        view_menu.append_section(None, maximize_sec)
         rotate_sec = Gio.Menu()
         rotate_sec.append("Rotate Clockwise",         "win.rotate-cw")
         rotate_sec.append("Rotate Counter-Clockwise", "win.rotate-ccw")
