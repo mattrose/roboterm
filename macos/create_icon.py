@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
-"""Generate Roboterm.icns from a Cairo-drawn terminal icon."""
+"""Generate Roboterm.icns from a Cairo-drawn terminal icon.
+
+Also installs the same artwork into a hicolor icon theme inside the bundle, so
+GTK can resolve it by name (the About dialog's `application_icon`). macOS uses
+the .icns for the Dock; GTK never reads .icns, hence both.
+"""
 import cairo
 import math
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
 
 SIZES = [16, 32, 64, 128, 256, 512, 1024]
+
+# Sizes installed into the icon theme. The About dialog draws at 128px; the rest
+# give GTK exact matches instead of rescaling.
+THEME_SIZES = [32, 64, 128, 256, 512]
+
+_INFO_PLIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Info.plist")
 
 # Colours
 BG      = (0.118, 0.122, 0.149)   # #1e1f26  dark blue-grey
@@ -77,6 +89,29 @@ def draw_icon(size: int) -> cairo.ImageSurface:
     return surf
 
 
+def app_id() -> str:
+    """The bundle identifier, which is also the icon's themed name.
+
+    Read from Info.plist rather than hardcoded: tests/unit/test_version.py
+    already pins that key to roboterm.app.APP_ID, so this stays in step with
+    the id the About dialog asks for without importing gi at build time.
+    """
+    with open(_INFO_PLIST, "rb") as fh:
+        return plistlib.load(fh)["CFBundleIdentifier"]
+
+
+def install_theme_icon(out_dir: str) -> None:
+    """Write the icon into <out_dir>/share/icons/hicolor as <app-id>.png."""
+    name = app_id()
+    for size in THEME_SIZES:
+        dest = os.path.join(out_dir, "share", "icons", "hicolor",
+                            f"{size}x{size}", "apps")
+        os.makedirs(dest, exist_ok=True)
+        path = os.path.join(dest, f"{name}.png")
+        draw_icon(size).write_to_png(path)
+    print(f"  wrote hicolor theme icon {name}.png ({len(THEME_SIZES)} sizes)")
+
+
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "."
     iconset  = os.path.join(out_dir, "Roboterm.iconset")
@@ -96,6 +131,8 @@ def main():
     subprocess.run(["iconutil", "-c", "icns", iconset, "-o", icns], check=True)
     shutil.rmtree(iconset)
     print(f"Created {icns}")
+
+    install_theme_icon(out_dir)
 
 
 if __name__ == "__main__":

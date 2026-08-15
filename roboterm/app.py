@@ -1,3 +1,4 @@
+import os
 import signal
 import sys
 
@@ -69,14 +70,23 @@ class TerminalApp(Adw.Application):
         win = TerminalWindow(self)
         win.present()
 
-    def _show_about(self) -> None:
-        """The application menu's About item.
+    def _register_icon_path(self) -> None:
+        """Put the bundle's own icon theme on GTK's search path.
 
-        No `license_type` is set: the repository ships no LICENSE file, and
-        Adwaita renders an unset one as nothing rather than claiming terms that
-        don't exist. Same for the icon — naming one GTK can't find in the icon
-        theme would draw a broken image.
+        `create_icon.py` installs the app icon into Resources/share/icons for
+        both build modes, but only a `make bundle` launcher roots XDG_DATA_DIRS
+        there — a `make app` build points it at Homebrew. Registering the
+        directory explicitly makes the icon resolve in both. From a source
+        checkout the directory doesn't exist and this is a no-op.
         """
+        res = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icons = os.path.join(res, "share", "icons")
+        display = Gdk.Display.get_default()
+        if os.path.isdir(icons) and display is not None:
+            Gtk.IconTheme.get_for_display(display).add_search_path(icons)
+
+    def _show_about(self) -> None:
+        """The application menu's About item."""
         about = Adw.AboutDialog(
             application_name="Roboterm",
             version=__version__,
@@ -85,7 +95,16 @@ class TerminalApp(Adw.Application):
             developer_name="Matt Rose",
             website="https://github.com/mattrose/roboterm",
             issue_url="https://github.com/mattrose/roboterm/issues",
+            # GtkLicense, not an Adw enum. GPL_2_0 would display "version 2 or
+            # later"; LICENSE is the bare GPLv2 text and nothing in the tree
+            # grants the or-later option, so claim only what is actually there.
+            license_type=Gtk.License.GPL_2_0_ONLY,
         )
+        # Only name an icon GTK can actually resolve: an unknown name renders as
+        # a broken image, and a source checkout has no generated icon at all.
+        display = Gdk.Display.get_default()
+        if display is not None and Gtk.IconTheme.get_for_display(display).has_icon(APP_ID):
+            about.set_application_icon(APP_ID)
         about.present(self.get_active_window())
 
     def _open_preferences(self) -> None:
@@ -97,6 +116,7 @@ class TerminalApp(Adw.Application):
             action.activate(None)
 
     def _on_activate(self, _app) -> None:
+        self._register_icon_path()
         css_provider = Gtk.CssProvider()
         css_provider.load_from_string(
             ".terminal-titlebar {"

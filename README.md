@@ -152,3 +152,7 @@ pytest tests/unit/
 ```bash
 PYTHONPATH="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" python3 -m pytest tests/integration/
 ```
+
+## License
+
+GNU General Public License, version 2 — see [LICENSE](LICENSE).

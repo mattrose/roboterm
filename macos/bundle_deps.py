@@ -248,6 +248,14 @@ def copy_data(res, libdest):
         src = os.path.join(BREW, "share", "icons", theme)
         if os.path.exists(src):
             run("cp", "-RL", src, icons)  # deref Homebrew's cellar symlinks
+    # Drop Homebrew's icon-theme.cache. GTK trusts a cache over the directory
+    # when one is present, and Homebrew's was built without the app icon
+    # create_icon.py installs into hicolor — leaving it makes GTK report the
+    # icon as missing even though the PNGs are right there. Same failure mode as
+    # the gdk-pixbuf loaders.cache below; deleting it makes GTK scan instead.
+    for dirpath, _, files in os.walk(icons):
+        if "icon-theme.cache" in files:
+            os.unlink(os.path.join(dirpath, "icon-theme.cache"))
 
 
 # ── gettext message catalogs ─────────────────────────────────────────────────
