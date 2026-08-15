@@ -48,7 +48,7 @@ def _menu_accels(keybindings: dict) -> dict:
 class TerminalApp(Adw.Application):
     def __init__(self):
         super().__init__(
-            application_id="com.example.GtkVteTerminal",
+            application_id="net.folkwolf.roboterm",
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
         self.connect("activate", self._on_activate)
