@@ -259,9 +259,32 @@ def copy_data(res, libdest):
 # copying the tree wholesale.
 LOCALE_DOMAINS = ("gtk40", "glib20", "libadwaita", "vte-2.91", "gdk-pixbuf")
 
+# Languages shipped by default. Homebrew carries 123 of them at ~190KB apiece —
+# 23MB of catalogs for a bundle that will only ever load one. This set keeps the
+# widely-used ones (~4MB); anything omitted falls back to English, exactly as it
+# did before any catalogs were bundled. Build with a different set via the
+# environment, e.g. `ROBOTERM_LOCALES=all make bundle` or
+# `ROBOTERM_LOCALES=de,fr,ja make bundle`.
+LOCALE_LANGS = (
+    "de", "en", "en_CA", "en_GB", "es", "fr", "it", "ja", "ko", "nl",
+    "pl", "pt", "pt_BR", "ru", "sv", "tr", "zh_CN", "zh_TW",
+)
+
+
+def wanted_langs():
+    """Language codes to bundle, or None for "every language Homebrew has"."""
+    env = os.environ.get("ROBOTERM_LOCALES", "").strip()
+    if not env:
+        return set(LOCALE_LANGS)
+    if env == "all":
+        return None
+    return {part.strip() for part in env.split(",") if part.strip()}
+
 
 def copy_locales(res):
     """Copy the GTK stack's message catalogs into the bundle.
+
+    Limited to LOCALE_DOMAINS x LOCALE_LANGS (see ROBOTERM_LOCALES to widen).
 
     These are inert on their own: every library hardcodes its own build-time
     Cellar path as its gettext lookup dir (e.g. gtk4 asks for
@@ -274,8 +297,11 @@ def copy_locales(res):
     dest_root = os.path.join(res, "share", "locale")
     if not os.path.isdir(src_root):
         return
+    langs = wanted_langs()
     found = set()
     for lang in sorted(os.listdir(src_root)):
+        if langs is not None and lang not in langs:
+            continue
         src_dir = os.path.join(src_root, lang, "LC_MESSAGES")
         if not os.path.isdir(src_dir):
             continue

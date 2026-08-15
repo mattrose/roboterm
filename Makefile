@@ -23,6 +23,12 @@ app: clean $(APP)
 # stack (Python framework, GTK4/VTE dylibs, typelibs, schemas, icons) into it so
 # it runs on a Mac with no Homebrew. Uses the same $(PYTHON) the app was built
 # against. See macos/bundle_deps.py.
+#
+# ROBOTERM_LOCALES picks which languages' message catalogs ship: a comma-
+# separated list, or "all" for every one Homebrew has (adds ~19MB). Exported so
+# it works as both `make bundle ROBOTERM_LOCALES=all` and as an env var.
+export ROBOTERM_LOCALES
+
 bundle: app
 	$(PYTHON) macos/bundle_deps.py $(APP)
 
