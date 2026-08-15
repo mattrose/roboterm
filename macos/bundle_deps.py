@@ -253,11 +253,16 @@ def copy_data(res, libdest):
 # ── gettext message catalogs ─────────────────────────────────────────────────
 
 # Domains whose translations reach the screen in a terminal: GTK's stock dialogs
-# and menus, Adwaita's widgets, VTE, GLib/gdk-pixbuf error text. Homebrew drops
+# and menus, Adwaita's widgets, VTE, gdk-pixbuf's image errors. Homebrew drops
 # every formula's catalogs into one share/locale tree, so the rest (git, wget,
 # bash, the GTK3 stack…) would only pad the bundle. Extend this list rather than
 # copying the tree wholesale.
-LOCALE_DOMAINS = ("gtk40", "glib20", "libadwaita", "vte-2.91", "gdk-pixbuf")
+#
+# glib20 is deliberately absent: it is the single largest domain (~45% of the
+# catalog bytes) and its strings are low-level GLib/GIO error text — file and
+# stream failures a terminal emulator surfaces rarely, if ever. Those messages
+# fall back to English; everything the user actually reads is still translated.
+LOCALE_DOMAINS = ("gtk40", "libadwaita", "vte-2.91", "gdk-pixbuf")
 
 # Languages shipped by default. Homebrew carries 123 of them at ~190KB apiece —
 # 23MB of catalogs for a bundle that will only ever load one. This set keeps the
