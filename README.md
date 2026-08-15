@@ -113,7 +113,7 @@ Defaults below; every shortcut except Copy/Paste can be rebound from the Prefere
 | Split pane automatically (based on dimensions)   | `Cmd+A`          | `Ctrl+Shift+A`    |
 | Split pane right                                 | `Cmd+D`          | `Ctrl+Shift+E`    |
 | Split pane down                                  | `Cmd+Shift+D`    | `Ctrl+Shift+O`    |
-| Maximize / restore active pane                   | `Cmd+X`          | `Ctrl+Shift+X`    |
+| Maximize / restore active pane                   | `Cmd+Z`          | `Ctrl+Shift+X`    |
 | Rotate panes clockwise                           | `Cmd+Option+]`   | `Ctrl+Shift+]`    |
 | Rotate panes counter-clockwise                   | `Cmd+Option+[`   | `Ctrl+Shift+[`    |
 | Previous tab                                     | `Cmd+Shift+[`    | `Ctrl+Page Up`    |

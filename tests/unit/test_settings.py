@@ -172,7 +172,7 @@ class TestKeybindings:
 
     def test_maximize_pane_default_matches_platform(self, tmp_config):
         import roboterm.settings as settings_mod
-        expected = "<Meta>x" if settings_mod._MACOS else "<Control><Shift>x"
+        expected = "<Meta>z" if settings_mod._MACOS else "<Control><Shift>x"
         assert Settings.get().get_keybindings()["maximize-pane"] == expected
 
     def test_defaults_have_no_duplicate_accelerators(self, tmp_config):
