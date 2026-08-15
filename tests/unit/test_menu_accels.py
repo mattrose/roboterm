@@ -1,3 +1,18 @@
+# Roboterm - a GTK4/VTE terminal emulator.
+# Copyright (C) 2026 Matt Rose
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see <https://www.gnu.org/licenses/>.
+
 """The macOS menu bar's shortcut labels are derived from the keybindings, so
 they cannot drift from what the keys actually do (see CLAUDE.md).  These tests
 cover that derivation, and that no hardcoded accelerator creeps back in.
