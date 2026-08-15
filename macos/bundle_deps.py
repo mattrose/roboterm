@@ -4,10 +4,10 @@
 `make app` builds a bundle whose launcher points back into Homebrew at runtime.
 This script (run by `make bundle` after `make app`) copies the entire native
 stack — the Python framework, the GTK4/VTE dylib closure, PyGObject/pycairo,
-GObject-introspection typelibs, GSettings schemas, gdk-pixbuf loaders and the
-Adwaita icon theme — into the .app and rewrites every `install name` so nothing
-references `/opt/homebrew`. The result runs on a Mac (same CPU arch) with no
-Homebrew installed.
+GObject-introspection typelibs, GSettings schemas, gdk-pixbuf loaders, gettext
+message catalogs and the Adwaita icon theme — into the .app and rewrites every
+`install name` so nothing references `/opt/homebrew`. The result runs on a Mac
+(same CPU arch) with no Homebrew installed.
 
 Everything is derived from the interpreter running this script via `sysconfig`,
 so there is no hardcoded Python version or Homebrew prefix. Invoke as:
@@ -250,6 +250,50 @@ def copy_data(res, libdest):
             run("cp", "-RL", src, icons)  # deref Homebrew's cellar symlinks
 
 
+# ── gettext message catalogs ─────────────────────────────────────────────────
+
+# Domains whose translations reach the screen in a terminal: GTK's stock dialogs
+# and menus, Adwaita's widgets, VTE, GLib/gdk-pixbuf error text. Homebrew drops
+# every formula's catalogs into one share/locale tree, so the rest (git, wget,
+# bash, the GTK3 stack…) would only pad the bundle. Extend this list rather than
+# copying the tree wholesale.
+LOCALE_DOMAINS = ("gtk40", "glib20", "libadwaita", "vte-2.91", "gdk-pixbuf")
+
+
+def copy_locales(res):
+    """Copy the GTK stack's message catalogs into the bundle.
+
+    These are inert on their own: every library hardcodes its own build-time
+    Cellar path as its gettext lookup dir (e.g. gtk4 asks for
+    /opt/homebrew/Cellar/gtk4/<ver>/share/locale), which does not exist on a Mac
+    without Homebrew — so a relocated bundle silently falls back to untranslated
+    English. roboterm/__init__.py rebinds each domain to the directory written
+    here; the `domains` manifest is what it reads, so the two never drift.
+    """
+    src_root = os.path.join(BREW, "share", "locale")
+    dest_root = os.path.join(res, "share", "locale")
+    if not os.path.isdir(src_root):
+        return
+    found = set()
+    for lang in sorted(os.listdir(src_root)):
+        src_dir = os.path.join(src_root, lang, "LC_MESSAGES")
+        if not os.path.isdir(src_dir):
+            continue
+        for domain in LOCALE_DOMAINS:
+            src = os.path.join(src_dir, domain + ".mo")
+            if not os.path.exists(src):
+                continue
+            dest_dir = os.path.join(dest_root, lang, "LC_MESSAGES")
+            os.makedirs(dest_dir, exist_ok=True)
+            shutil.copy(src, dest_dir)  # follows Homebrew's Cellar symlink
+            found.add(domain)
+    if not found:
+        return
+    os.makedirs(dest_root, exist_ok=True)
+    with open(os.path.join(dest_root, "domains"), "w") as fh:
+        fh.write("\n".join(sorted(found)) + "\n")
+
+
 # ── gdk-pixbuf loaders + regenerated cache ───────────────────────────────────
 
 def copy_pixbuf_loaders(libdest):
@@ -312,13 +356,14 @@ def main():
     os.makedirs(frameworks, exist_ok=True)
 
     print("Bundling native deps from %s (Python %s) into %s" % (BREW, PY_VER, app))
-    print("  [1/7] Python framework"); copy_framework(frameworks)
-    print("  [2/7] PyGObject + pycairo"); copy_bindings(libdest)
-    print("  [3/7] typelibs, schemas, icons"); copy_data(res, libdest)
-    print("  [4/7] gdk-pixbuf loaders"); copy_pixbuf_loaders(libdest)
-    print("  [5/7] dependency closure"); copy_dep_closure(app, libdest)
-    print("  [6/7] relocate install names"); relocate_all(app)
-    print("  [7/7] prune symlinks + codesign")
+    print("  [1/8] Python framework"); copy_framework(frameworks)
+    print("  [2/8] PyGObject + pycairo"); copy_bindings(libdest)
+    print("  [3/8] typelibs, schemas, icons"); copy_data(res, libdest)
+    print("  [4/8] message catalogs"); copy_locales(res)
+    print("  [5/8] gdk-pixbuf loaders"); copy_pixbuf_loaders(libdest)
+    print("  [6/8] dependency closure"); copy_dep_closure(app, libdest)
+    print("  [7/8] relocate install names"); relocate_all(app)
+    print("  [8/8] prune symlinks + codesign")
     prune_broken_symlinks(app)
     codesign(app)
     print("Done. Self-contained bundle at %s" % app)
