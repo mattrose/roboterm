@@ -31,7 +31,7 @@ def _default_keybindings() -> dict:
         "split-auto":    "<Control><Shift>a",
         "split-right":   "<Control><Shift>e",
         "split-down":    "<Control><Shift>o",
-        "maximize-pane": "<Control><Shift>x",
+        "maximize-pane": "<Control><Shift>z",
         "prev-tab":      "<Control>Page_Up",
         "next-tab":      "<Control>Page_Down",
         "rotate-cw":     "<Control><Shift>bracketright",
