@@ -58,6 +58,14 @@ class TerminalApp(Adw.Application):
         win = TerminalWindow(self)
         win.present()
 
+    def _open_preferences(self) -> None:
+        """Hand the app menu's Preferences to the focused window's own action, so
+        it, the menu bar item and the keybinding all open the one same window."""
+        win = self.get_active_window()
+        action = win.lookup_action("preferences") if win is not None else None
+        if action is not None:
+            action.activate(None)
+
     def _on_activate(self, _app) -> None:
         css_provider = Gtk.CssProvider()
         css_provider.load_from_string(
@@ -85,10 +93,20 @@ class TerminalApp(Adw.Application):
         self.new_window()
 
     def _setup_menubar(self) -> None:
-        # ── App-level action ─────────────────────────────────────────────────
-        new_win = Gio.SimpleAction.new("new-window", None)
-        new_win.connect("activate", lambda *_: self.new_window())
-        self.add_action(new_win)
+        # ── App-level actions ────────────────────────────────────────────────
+        # GTK builds the macOS application menu (the one titled "Roboterm") from
+        # its own embedded definition, which points "Preferences" at
+        # app.preferences and "Quit Roboterm" at app.quit. Those items stay
+        # greyed out until the actions exist here — the app menu is not part of
+        # the menubar model built below, so nothing else registers them.
+        for name, cb in (
+            ("new-window",  self.new_window),
+            ("preferences", self._open_preferences),
+            ("quit",        self.quit),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", lambda _a, _p, fn=cb: fn())
+            self.add_action(action)
 
         # Accelerators — displayed in menu labels; key handling is the CAPTURE handler
         self._refresh_menu_accels()

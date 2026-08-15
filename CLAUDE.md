@@ -73,6 +73,8 @@ Both paths read `Settings.get().get_keybindings()`, but they do very different t
 
 The README's shortcut table is the one place a keybinding is written out by hand rather than derived, so `tests/unit/test_readme_shortcuts.py` pins every row to `_default_keybindings()` for both platforms — changing a default without updating the table fails, as does adding a binding with no row at all. If you rename a row's label, update `_ROW_FOR_BINDING` there too.
 
+The macOS **application menu** (the one titled "Roboterm", left of File) is a third surface and is *not* built from the menubar model in `_setup_menubar`. GTK assembles it from its own embedded `gtkapplication-quartz.ui`, which points its items at fixed action names — `app.about`, `app.preferences`, `app.quit` — plus `gtkinternal.*` ones it handles itself. An item whose action isn't registered on the `Adw.Application` is simply inert, with no error anywhere, which is how Preferences and Quit sat dead there. Register app-level actions under exactly those names in `_setup_menubar`; `app.about` is still unregistered, so About does nothing.
+
 Copy/Paste (`Cmd+C`/`Cmd+V` on macOS, `Ctrl+Shift+C`/`Ctrl+Shift+V` elsewhere) is handled separately and directly in `TerminalWidget._on_key_pressed` (`terminal.py`) — it is **not** part of the customizable `Settings` keybindings dict and can't be rebound from Preferences.
 
 ### Pane tree
