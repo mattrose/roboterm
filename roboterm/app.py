@@ -3,6 +3,7 @@ import sys
 
 from gi.repository import Gtk, Adw, Gdk, Gio, GLib
 
+from . import __version__
 from .settings import Settings
 from .window import TerminalWindow
 
@@ -61,6 +62,25 @@ class TerminalApp(Adw.Application):
         win = TerminalWindow(self)
         win.present()
 
+    def _show_about(self) -> None:
+        """The application menu's About item.
+
+        No `license_type` is set: the repository ships no LICENSE file, and
+        Adwaita renders an unset one as nothing rather than claiming terms that
+        don't exist. Same for the icon — naming one GTK can't find in the icon
+        theme would draw a broken image.
+        """
+        about = Adw.AboutDialog(
+            application_name="Roboterm",
+            version=__version__,
+            comments="A GTK4/VTE terminal emulator with tabs, "
+                     "pane splitting and live preferences.",
+            developer_name="Matt Rose",
+            website="https://github.com/mattrose/roboterm",
+            issue_url="https://github.com/mattrose/roboterm/issues",
+        )
+        about.present(self.get_active_window())
+
     def _open_preferences(self) -> None:
         """Hand the app menu's Preferences to the focused window's own action, so
         it, the menu bar item and the keybinding all open the one same window."""
@@ -104,6 +124,7 @@ class TerminalApp(Adw.Application):
         # the menubar model built below, so nothing else registers them.
         for name, cb in (
             ("new-window",  self.new_window),
+            ("about",       self._show_about),
             ("preferences", self._open_preferences),
             ("quit",        self.quit),
         ):

@@ -3,6 +3,10 @@ import sys
 
 import gi
 
+# Shown in the About dialog. Kept in step with macos/Info.plist's
+# CFBundleShortVersionString by tests/unit/test_version.py.
+__version__ = "1.0"
+
 if sys.platform == "darwin":
     os.environ.setdefault("GSK_RENDERER", "cairo")
 
