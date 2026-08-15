@@ -1,7 +1,8 @@
-"""`roboterm.__version__` is what the About dialog shows; `Info.plist` is what
-Finder, the Dock and `codesign` report. They are written in two different files
-and nothing links them, so this pins them together — a bundle whose About box
-disagrees with its own metadata is the kind of drift nobody notices by hand.
+"""The app's identity is written down twice: in Python (what the About dialog
+shows, what GApplication registers) and in `macos/Info.plist` (what Finder, the
+Dock, `lsappinfo` and `codesign` report). Nothing links the two files, and they
+have drifted before — the GApplication id said `com.example.GtkVteTerminal`
+while the bundle said `net.folkwolf.roboterm`. These tests pin them together.
 """
 
 import pathlib
@@ -10,6 +11,7 @@ import plistlib
 import pytest
 
 import roboterm
+from roboterm.app import APP_ID
 
 _INFO_PLIST = pathlib.Path(__file__).parents[2] / "macos" / "Info.plist"
 
@@ -34,3 +36,21 @@ class TestVersion:
         """Apple rejects anything else in CFBundleShortVersionString."""
         parts = roboterm.__version__.split(".")
         assert parts and all(p.isdigit() for p in parts)
+
+
+class TestAppId:
+    def test_matches_info_plist(self, plist):
+        assert APP_ID == plist["CFBundleIdentifier"]
+
+    def test_is_reverse_dns(self):
+        """GApplication rejects ids that aren't reverse-DNS, and macOS expects
+        the same shape — a lone word would pass a naive equality check on both
+        sides while still being wrong."""
+        parts = APP_ID.split(".")
+        assert len(parts) >= 2
+        assert all(p and not p[0].isdigit() for p in parts)
+        assert all(c.isalnum() or c in "-_" for p in parts for c in p)
+
+    def test_is_not_a_placeholder(self):
+        """The id it drifted to last time, and its siblings."""
+        assert not APP_ID.startswith(("com.example", "org.example", "org.gtk.example"))

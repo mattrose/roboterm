@@ -49,10 +49,17 @@ def _menu_accels(keybindings: dict) -> dict:
     return accels
 
 
+# The GApplication id. A module-level constant so it is readable without
+# constructing the app (subclasses of the mocked Adw.Application are themselves
+# mocks under tests/unit), which is what lets test_version.py pin it to
+# Info.plist's CFBundleIdentifier — the two drifted apart unnoticed once.
+APP_ID = "net.folkwolf.roboterm"
+
+
 class TerminalApp(Adw.Application):
     def __init__(self):
         super().__init__(
-            application_id="net.folkwolf.roboterm",
+            application_id=APP_ID,
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
         self.connect("activate", self._on_activate)
