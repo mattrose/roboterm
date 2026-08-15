@@ -11,6 +11,9 @@ _MACOS = sys.platform == "darwin"
 # Menu items whose shortcut label comes from the matching keybinding.
 _MENU_ACCEL_ACTIONS = {
     "preferences":   "win.preferences",
+    # The application menu's Quit item — GTK's own definition binds it to
+    # app.quit, so that is the action the label has to hang off.
+    "quit":          "app.quit",
     "new-window":    "app.new-window",
     "new-tab":       "win.new-tab",
     "close-pane":    "win.close-pane",

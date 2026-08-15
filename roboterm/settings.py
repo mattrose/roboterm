@@ -11,6 +11,7 @@ def _default_keybindings() -> dict:
     if _MACOS:
         return {
             "preferences":   "<Meta>comma",
+            "quit":          "<Meta>q",
             "new-window":    "<Meta>n",
             "new-tab":       "<Meta>t",
             "close-pane":    "<Meta>w",
@@ -25,6 +26,7 @@ def _default_keybindings() -> dict:
         }
     return {
         "preferences":   "<Control>comma",
+        "quit":          "<Control><Shift>q",
         "new-window":    "<Control><Shift>n",
         "new-tab":       "<Control><Shift>t",
         "close-pane":    "<Control><Shift>w",

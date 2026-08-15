@@ -21,6 +21,7 @@ _README = pathlib.Path(__file__).parents[2] / "README.md"
 # are handled in TerminalWidget._on_key_pressed, not the keybindings dict.
 _ROW_FOR_BINDING = {
     "preferences":   "Preferences",
+    "quit":          "Quit",
     "new-window":    "New window",
     "new-tab":       "New tab",
     "close-pane":    "Close active pane (closes tab when last pane)",

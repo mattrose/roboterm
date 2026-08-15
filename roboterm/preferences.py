@@ -4,6 +4,7 @@ from .settings import Settings, THEMES, _rgba_to_hex
 
 _ACTIONS = [
     ("preferences",   "Preferences"),
+    ("quit",          "Quit"),
     ("new-window",    "New Window"),
     ("new-tab",       "New Tab"),
     ("close-pane",    "Close Pane"),

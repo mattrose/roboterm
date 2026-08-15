@@ -233,6 +233,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         """Return {(modifier_mask, keyval): callback} from current settings."""
         actions = {
             "preferences": self._open_preferences,
+            "quit":        lambda: self.get_application().quit(),
             "new-window":  lambda: self.get_application().new_window(),
             "new-tab":     self._new_tab,
             "close-pane":  lambda: (p := self._active_panes()) and p.close_active(),

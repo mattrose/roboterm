@@ -105,6 +105,7 @@ Defaults below; every shortcut except Copy/Paste can be rebound from the Prefere
 | Action                                          | macOS            | Linux / Other    |
 |--------------------------------------------------|------------------|-------------------|
 | Preferences                                      | `Cmd+,`          | `Ctrl+,`          |
+| Quit                                             | `Cmd+Q`          | `Ctrl+Shift+Q`    |
 | Copy selection                                   | `Cmd+C`          | `Ctrl+Shift+C`    |
 | Paste clipboard                                  | `Cmd+V`          | `Ctrl+Shift+V`    |
 | New window                                       | `Cmd+N`          | `Ctrl+Shift+N`    |
