@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 Roboterm.app/
 .DS_Store
+*.sw[a-p]
+*~
