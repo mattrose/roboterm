@@ -1,0 +1,223 @@
+name: Release
+
+# Publishes a GitHub release for a version tag, with the self-contained macOS
+# .app bundle (`make bundle`) attached as a zip plus its SHA-256 checksum.
+#
+# Trigger it by pushing a tag:      git tag v1.0.0 && git push origin v1.0.0
+# Or manually from the Actions tab (workflow_dispatch), which creates the tag
+# at the selected commit if it doesn't exist yet.
+#
+# A tag containing a hyphen (v1.0.0-rc1) is published as a pre-release.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to release (e.g. v1.0.0)"
+        required: true
+        type: string
+      draft:
+        description: "Create the release as a draft"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Gate: the mocked-gi unit suite runs anywhere, so it costs a minute and
+  # keeps a broken tree from ever reaching a published release. ───────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test deps
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -q
+
+  # ── Build the distributable .app on macOS ──────────────────────────────────
+  build-macos:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          # Add an Intel row here if/when an x86_64 runner is available, e.g.
+          # - { runner: macos-13, arch: x86_64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the release version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          # CFBundleVersion must be digits and dots only, so drop any
+          # pre-release suffix (1.0.0-rc1 -> 1.0.0).
+          echo "tag=$TAG"                      >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"              >> "$GITHUB_OUTPUT"
+          echo "numeric=${VERSION%%-*}"        >> "$GITHUB_OUTPUT"
+
+      - name: Install the GTK4/VTE stack
+        run: |
+          set -euo pipefail
+          brew update
+          brew install gtk4 vte3 pygobject3 adwaita-icon-theme
+
+      - name: Locate the Homebrew Python that owns PyGObject
+        id: python
+        run: |
+          set -euo pipefail
+          # The bundle must be built with the interpreter that can import `gi`:
+          # macos/bundle_deps.py derives the Homebrew prefix and the site-packages
+          # it copies from *that* interpreter, and the Makefile embeds its
+          # libpython in the launcher. The runner's preinstalled python3 shadows
+          # Homebrew's on PATH and has no gi, so resolve it explicitly from the
+          # python@3.x formula pygobject3 was built against.
+          PY_FORMULA="$(brew deps pygobject3 | grep -m1 '^python@3' || true)"
+          if [ -z "$PY_FORMULA" ]; then
+            echo "::error::No python@3.x in 'brew deps pygobject3' — cannot pick a build interpreter."
+            brew deps pygobject3
+            exit 1
+          fi
+          PYTHON="$(brew --prefix "$PY_FORMULA")/bin/python3"
+          "$PYTHON" -c 'import gi, cairo; print("gi + cairo OK on", __import__("sys").version)'
+          echo "python=$PYTHON" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp the release version into Info.plist
+        run: |
+          set -euo pipefail
+          plutil -replace CFBundleVersion            -string "${{ steps.version.outputs.numeric }}" macos/Info.plist
+          plutil -replace CFBundleShortVersionString -string "${{ steps.version.outputs.numeric }}" macos/Info.plist
+          plutil -p macos/Info.plist | grep -i bundleversion
+
+      - name: Build the self-contained bundle
+        run: make bundle PYTHON="${{ steps.python.outputs.python }}"
+
+      - name: Verify nothing still links against Homebrew
+        run: |
+          set -euo pipefail
+          # `make bundle` promises a bundle that runs on a Mac with no Homebrew.
+          # Any Mach-O still naming the Homebrew prefix as a dependency breaks
+          # that on a clean machine but not on this runner, so check it here.
+          BREW="$(brew --prefix)"
+          LEAKED=$(
+            find Roboterm.app -type f \( -name '*.dylib' -o -name '*.so' -o -perm +111 \) -print0 \
+              | xargs -0 -n1 otool -L 2>/dev/null \
+              | grep -E "^[[:space:]]+${BREW}/" || true
+          )
+          if [ -n "$LEAKED" ]; then
+            echo "::error::Bundle still references $BREW:"
+            echo "$LEAKED"
+            exit 1
+          fi
+          echo "No Homebrew references — bundle is self-contained."
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          NAME="Roboterm-${{ steps.version.outputs.version }}-macos-${{ matrix.arch }}"
+          # ditto (not zip) preserves symlinks, resource forks and the ad-hoc
+          # code signature bundle_deps.py applied.
+          ditto -c -k --sequesterRsrc --keepParent Roboterm.app "$NAME.zip"
+          shasum -a 256 "$NAME.zip" > "$NAME.zip.sha256"
+          cat "$NAME.zip.sha256"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.name }}.zip
+            ${{ steps.package.outputs.name }}.zip.sha256
+          if-no-files-found: error
+
+  # ── Publish ────────────────────────────────────────────────────────────────
+  release:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write the release notes preamble
+        id: notes
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # A hyphen in the tag (v1.0.0-rc1, v2.0.0-beta) means pre-release.
+          case "$TAG" in
+            *-*) echo "prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          cat > NOTES.md <<'EOF'
+          ## Install
+
+          **macOS** — download the `.zip` below, unzip it, and drag `Roboterm.app`
+          to `/Applications`. The bundle is self-contained (it ships its own
+          Python, GTK4 and VTE), so Homebrew is not needed to run it.
+
+          It is ad-hoc signed rather than notarized, so Gatekeeper will refuse the
+          first launch. Clear the quarantine flag once:
+
+          ```sh
+          xattr -dr com.apple.quarantine /Applications/Roboterm.app
+          ```
+
+          Verify the download against the matching `.sha256` file:
+
+          ```sh
+          shasum -a 256 -c Roboterm-*.zip.sha256
+          ```
+
+          **Linux** — run from source; see the README.
+
+          EOF
+          ls -R dist
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.notes.outputs.tag }}
+        run: |
+          set -euo pipefail
+          FLAGS=(--title "Roboterm ${TAG#v}" --notes-file NOTES.md --generate-notes)
+          if [ "${{ steps.notes.outputs.prerelease }}" = "true" ]; then
+            FLAGS+=(--prerelease)
+          fi
+          if [ "${{ github.event.inputs.draft }}" = "true" ]; then
+            FLAGS+=(--draft)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — replacing its assets."
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" "${FLAGS[@]}"
+          fi
+          gh release view "$TAG"

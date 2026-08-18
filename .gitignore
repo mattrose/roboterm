@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 Roboterm.app/
+Roboterm-*.zip
+Roboterm-*.zip.sha256
 .DS_Store
 *.sw[a-p]
 *~
