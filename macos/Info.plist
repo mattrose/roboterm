@@ -22,8 +22,13 @@
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- Must not undersell what the bundled Mach-Os actually require: the
+         Homebrew dylibs copied in by macos/bundle_deps.py carry the minimum
+         OS of the machine that built them, and LaunchServices enforces that,
+         not this key. The release workflow builds on macOS 14 and fails the
+         build if anything in the bundle needs newer than what is declared. -->
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>14.0</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.utilities</string>
     <key>CFBundleIconFile</key>

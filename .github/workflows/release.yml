@@ -57,7 +57,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
+          # macos-14, not macos-15, on purpose. Homebrew bottles carry the
+          # minimum OS of the machine they were built on, and the whole GTK
+          # stack gets bundled — so a macos-15 build produces an app that
+          # LaunchServices refuses on macOS 14 with kLSIncompatibleSystemVersionErr.
+          # Building on 14 yields a bundle that runs on 14 and on 15+.
+          - runner: macos-14
             arch: arm64
           # Add an Intel row here if/when an x86_64 runner is available, e.g.
           # - { runner: macos-13, arch: x86_64 }
@@ -166,6 +171,31 @@ jobs:
               sys.exit(f"::error::Bundle is missing typelibs: {', '.join(missing)}")
           print(f"All {len(required)} required typelibs present.")
           PY
+
+      - name: Verify the bundle runs on the macOS version it advertises
+        run: |
+          set -euo pipefail
+          # Every Mach-O records the oldest macOS it will load on, and the
+          # bundled Homebrew dylibs inherit that from the runner. Nothing
+          # reconciles it with LSMinimumSystemVersion, so the app can claim
+          # macOS 12 and be rejected on 14 — which is how the first two
+          # releases shipped as 15-only while advertising 12.0.
+          DECLARED=$(plutil -extract LSMinimumSystemVersion raw Roboterm.app/Contents/Info.plist)
+          REQUIRED=$(
+            find Roboterm.app -type f \( -name '*.dylib' -o -name '*.so' -o -perm +111 \) -print0 \
+              | xargs -0 -n1 otool -l 2>/dev/null \
+              | awk '/^ *minos /{print $2}' \
+              | sort -V | tail -1
+          )
+          echo "Info.plist declares: $DECLARED"
+          echo "Bundle actually needs: $REQUIRED"
+          # sort -V puts the newer version last; if that is the declared one,
+          # the declaration covers everything shipped.
+          if [ "$(printf '%s\n%s\n' "$DECLARED" "$REQUIRED" | sort -V | tail -1)" != "$DECLARED" ]; then
+            echo "::error::Bundle needs macOS $REQUIRED but Info.plist advertises $DECLARED — it will not launch on $DECLARED."
+            exit 1
+          fi
+          echo "LSMinimumSystemVersion covers everything in the bundle."
 
       - name: Package
         id: package
