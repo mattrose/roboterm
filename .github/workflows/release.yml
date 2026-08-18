@@ -221,6 +221,9 @@ jobs:
   release:
     needs: build-macos
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.notes.outputs.tag }}
+      prerelease: ${{ steps.notes.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
@@ -286,3 +289,100 @@ jobs:
             gh release create "$TAG" dist/* --target "$GITHUB_SHA" "${FLAGS[@]}"
           fi
           gh release view "$TAG"
+
+  # ── Point the Homebrew tap at the new tag ──────────────────────────────────
+  # The tap is a separate repository, and GITHUB_TOKEN is scoped to this one,
+  # so pushing there needs a token with contents:write on the tap stored as the
+  # TAP_GITHUB_TOKEN secret. Without it this job reports what it would have
+  # done and succeeds — a tap that lags is not a reason to fail a release.
+  bump-tap:
+    needs: release
+    runs-on: ubuntu-latest
+    # Drafts have no tag pushed yet (so the source tarball 404s) and a
+    # pre-release should not become what `brew install roboterm` gives you.
+    if: needs.release.outputs.prerelease != 'true' && github.event.inputs.draft != 'true'
+    env:
+      TAP_REPO: mattrose/homebrew-roboterm
+      FORMULA: Formula/roboterm.rb
+      TAG: ${{ needs.release.outputs.tag }}
+    steps:
+      - name: Check for the tap token
+        id: check
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TAP_TOKEN:-}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::TAP_GITHUB_TOKEN is not set — skipping the tap bump for $TAG. Bump $TAP_REPO by hand, or add the secret to automate it."
+          fi
+
+      - name: Hash the source tarball
+        id: tarball
+        if: steps.check.outputs.has_token == 'true'
+        run: |
+          set -euo pipefail
+          # The formula builds from GitHub's generated source tarball for the
+          # tag, so that is what has to be hashed — not the .app asset.
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          curl -fsSL --retry 3 -o source.tar.gz "$URL"
+          SHA=$(sha256sum source.tar.gz | cut -d' ' -f1)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "$TAG -> $SHA"
+
+      - name: Check out the tap
+        if: steps.check.outputs.has_token == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: Rewrite url and sha256
+        id: rewrite
+        if: steps.check.outputs.has_token == 'true'
+        env:
+          NEW_URL: ${{ steps.tarball.outputs.url }}
+          NEW_SHA: ${{ steps.tarball.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+
+          path = pathlib.Path("tap") / os.environ["FORMULA"]
+          text = path.read_text()
+
+          # Anchor on the stanzas rather than on the old version, and fail loudly
+          # if either is missing: a silent no-op here would publish a release
+          # while leaving the tap pointing at the previous tag.
+          text, n_url = re.subn(r'^(\s*url\s+)"[^"]*"',
+                                lambda m: f'{m.group(1)}"{os.environ["NEW_URL"]}"',
+                                text, count=1, flags=re.M)
+          text, n_sha = re.subn(r'^(\s*sha256\s+)"[^"]*"',
+                                lambda m: f'{m.group(1)}"{os.environ["NEW_SHA"]}"',
+                                text, count=1, flags=re.M)
+          if n_url != 1 or n_sha != 1:
+              sys.exit(f"::error::Could not rewrite {path} (url matches={n_url}, sha256 matches={n_sha}).")
+
+          path.write_text(text)
+          print(text.split("license")[0])
+          PY
+
+      - name: Commit and push to the tap
+        if: steps.check.outputs.has_token == 'true'
+        working-directory: tap
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Tap already points at $TAG — nothing to do."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$FORMULA"
+          git commit -m "roboterm ${TAG#v}" -m "Automated bump from ${{ github.repository }}@${TAG}."
+          git push
+          echo "Bumped $TAP_REPO to $TAG."
