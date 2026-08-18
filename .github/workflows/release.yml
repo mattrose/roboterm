@@ -81,7 +81,10 @@ jobs:
         run: |
           set -euo pipefail
           brew update
-          brew install gtk4 vte3 pygobject3 adwaita-icon-theme
+          # libadwaita is listed explicitly because nothing else here pulls it
+          # in — gtk4, vte3, pygobject3 and adwaita-icon-theme all resolve
+          # without it — while roboterm requires Adw-1 at import time.
+          brew install gtk4 vte3 pygobject3 adwaita-icon-theme libadwaita
 
       - name: Locate the Homebrew Python that owns PyGObject
         id: python
@@ -131,6 +134,38 @@ jobs:
             exit 1
           fi
           echo "No Homebrew references — bundle is self-contained."
+
+      - name: Verify every typelib the app requires is in the bundle
+        run: |
+          set -euo pipefail
+          # Typelibs are dlopen'd by name at runtime rather than linked, so a
+          # missing one builds cleanly and dies on launch — which is exactly
+          # how the first release shipped with no Adw. The list is derived from
+          # the source so a new require_version is covered automatically.
+          python3 - <<'PY'
+          import pathlib, re, sys
+
+          src = pathlib.Path("roboterm/__init__.py").read_text()
+          required = re.findall(
+              r"""require_version\(\s*["']([\w.]+)["']\s*,\s*["']([\w.]+)["']\s*\)""", src
+          )
+          if not required:
+              sys.exit("::error::No require_version calls found — the parser needs updating.")
+
+          libdir = pathlib.Path("Roboterm.app/Contents/Resources/lib/girepository-1.0")
+          missing = []
+          for ns, ver in required:
+              name = f"{ns}-{ver}.typelib"
+              if (libdir / name).exists():
+                  print(f"  ok       {name}")
+              else:
+                  print(f"  MISSING  {name}")
+                  missing.append(name)
+
+          if missing:
+              sys.exit(f"::error::Bundle is missing typelibs: {', '.join(missing)}")
+          print(f"All {len(required)} required typelibs present.")
+          PY
 
       - name: Package
         id: package
