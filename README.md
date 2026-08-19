@@ -80,7 +80,13 @@ On top of `make app`, this copies the entire native stack into the `.app` and re
 - the full GTK4/VTE dylib closure,
 - the GObject-introspection typelibs, GSettings schemas, gdk-pixbuf loaders, and the Adwaita icon theme.
 
-The whole thing is then ad-hoc codesigned. The result is a ~125 MB, distributable bundle (see `macos/bundle_deps.py`). Because it is ad-hoc signed rather than notarized with a Developer ID, on another Mac the first launch needs a right-click → **Open** (or removing the quarantine attribute).
+The whole thing is then ad-hoc codesigned. The result is a ~125 MB, distributable bundle (see `macos/bundle_deps.py`). Because it is ad-hoc signed rather than notarized with a Developer ID, a copy that another Mac *downloads* carries macOS's `com.apple.quarantine` flag, and Gatekeeper will refuse to launch it. Clear the flag once:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Roboterm.app
+```
+
+A right-click → **Open** on the app does the same thing through the GUI. Neither is needed for a bundle you built yourself — the quarantine flag is only applied to downloaded files.
 
 The launcher detects at runtime whether the bundled stack is present: `make bundle` bundles use it, while `make app` bundles fall back to Homebrew — so a single launcher covers both.
 
