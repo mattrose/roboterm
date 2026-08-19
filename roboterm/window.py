@@ -33,7 +33,8 @@ class TabLabel(Gtk.Box):
         self._default_title = title
         self._label = Gtk.Label(label=title)
         self._label.set_ellipsize(3)   # Pango.EllipsizeMode.END
-        self._label.set_max_width_chars(24)
+        self._label.set_width_chars(16)      # floor: keeps short titles from
+        self._label.set_max_width_chars(40)  # making cramped, uneven tabs
         self.append(self._label)
 
         btn = Gtk.Button()
