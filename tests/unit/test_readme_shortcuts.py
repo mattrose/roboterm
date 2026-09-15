@@ -48,12 +48,14 @@ _ROW_FOR_BINDING = {
     "rotate-ccw":    "Rotate panes counter-clockwise",
     "prev-tab":      "Previous tab",
     "next-tab":      "Next tab",
+    "tab-overview":  "Show all tabs (overview)",
 }
 
 # GTK accelerator syntax -> the notation the README uses.
 _MODIFIERS = {"<Meta>": "Cmd+", "<Control>": "Ctrl+", "<Shift>": "Shift+"}
 _KEY_NAMES = {
     "comma": ",", "bracketleft": "[", "bracketright": "]",
+    "backslash": "\\",
     "Page_Up": "Page Up", "Page_Down": "Page Down",
 }
 
@@ -118,6 +120,7 @@ class TestAccelRendering:
         ("<Meta>comma",                True,  "Cmd+,"),
         ("<Meta><Alt>bracketright",    True,  "Cmd+Option+]"),
         ("<Control>Page_Up",           False, "Ctrl+Page Up"),
+        ("<Meta><Shift>backslash",     True,  "Cmd+Shift+\\"),
     ])
     def test_renders_like_the_readme(self, accel, macos, expected):
         assert _as_documented(accel, macos) == expected

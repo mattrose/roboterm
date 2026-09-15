@@ -42,6 +42,7 @@ _MENU_ACCEL_ACTIONS = {
     "rotate-ccw":    "win.rotate-ccw",
     "prev-tab":      "win.prev-tab",
     "next-tab":      "win.next-tab",
+    "tab-overview":  "win.tab-overview",
 }
 
 # Copy/Paste are handled in TerminalWidget._on_key_pressed and are not part of
@@ -81,9 +82,12 @@ class TerminalApp(Adw.Application):
         self.connect("activate", self._on_activate)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self.quit)
 
-    def new_window(self) -> None:
-        win = TerminalWindow(self)
+    def new_window(self, *, with_tab: bool = True) -> TerminalWindow:
+        """Open a window. `with_tab=False` leaves it empty for a tab that is
+        being dragged out of another window (TerminalWindow._on_create_window)."""
+        win = TerminalWindow(self, initial_tab=with_tab)
         win.present()
+        return win
 
     def _register_icon_path(self) -> None:
         """Put the bundle's own icon theme on GTK's search path.
@@ -223,6 +227,9 @@ class TerminalApp(Adw.Application):
         tab_sec.append("Previous Tab", "win.prev-tab")
         tab_sec.append("Next Tab",     "win.next-tab")
         win_menu.append_section(None, tab_sec)
+        overview_sec = Gio.Menu()
+        overview_sec.append("Show All Tabs", "win.tab-overview")
+        win_menu.append_section(None, overview_sec)
         menubar.append_submenu("Window", win_menu)
 
         self.set_menubar(menubar)

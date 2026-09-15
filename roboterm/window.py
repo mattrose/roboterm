@@ -13,49 +13,38 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <https://www.gnu.org/licenses/>.
 
-from gi.repository import Gtk, Adw, GObject, Gio, Gdk
+from gi.repository import Gtk, Adw, GLib, Gio, Gdk
 
 from .panes import PaneManager
 from .preferences import PreferencesWindow
 from .settings import Settings
 
 
-class TabLabel(Gtk.Box):
-    """A tab label widget: «Terminal N  ×»"""
+def _accel_keyvals(keyval: int, mods) -> set:
+    """Every keyval a key press for this accelerator can arrive as.
 
-    __gsignals__ = {
-        "close-clicked": (GObject.SignalFlags.RUN_LAST, None, ()),
-    }
-
-    def __init__(self, title: str):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-
-        self._default_title = title
-        self._label = Gtk.Label(label=title)
-        self._label.set_ellipsize(3)   # Pango.EllipsizeMode.END
-        self._label.set_width_chars(16)      # floor: keeps short titles from
-        self._label.set_max_width_chars(40)  # making cramped, uneven tabs
-        self.append(self._label)
-
-        btn = Gtk.Button()
-        btn.set_icon_name("window-close-symbolic")
-        btn.add_css_class("flat")
-        btn.add_css_class("circular")
-        btn.set_focusable(False)
-        btn.connect("clicked", lambda _: self.emit("close-clicked"))
-        self.append(btn)
-
-    def set_title(self, title: str) -> None:
-        """Show *title*, falling back to the tab's original name when empty."""
-        self._label.set_label(title or self._default_title)
-
-    @property
-    def title(self) -> str:
-        return self._label.get_label()
+    An accelerator names the unshifted key — `<Meta><Shift>backslash` — but the
+    event GDK delivers for it carries the *shifted* keyval, `bar`. A table keyed
+    only on the accelerator's own keyval therefore never matches any binding
+    whose key is punctuation (the tab and rotate defaults, say). Ask the keymap
+    what that key produces under these modifiers and accept that too.
+    """
+    keyvals = {keyval}
+    display = Gdk.Display.get_default()
+    if display is None:
+        return keyvals
+    found, keys = display.map_keyval(keyval)
+    if found and keys:
+        ok, shifted, *_ = display.translate_key(keys[0].keycode, mods, keys[0].group)
+        if ok:
+            keyvals.add(shifted)
+    return keyvals
 
 
 class TerminalWindow(Adw.ApplicationWindow):
-    def __init__(self, app):
+    def __init__(self, app, *, initial_tab: bool = True):
+        """A window with one tab, or with none when a dragged-out tab is on its
+        way in (see `_on_create_window`)."""
         super().__init__(application=app, title="Terminal")
         self.set_default_size(900, 600)
 
@@ -64,8 +53,9 @@ class TerminalWindow(Adw.ApplicationWindow):
         menu_model = Gio.Menu()
 
         win_section = Gio.Menu()
-        win_section.append("New Window", "win.new-window")
-        win_section.append("New Tab",    "win.new-tab")
+        win_section.append("New Window",    "win.new-window")
+        win_section.append("New Tab",       "win.new-tab")
+        win_section.append("Show All Tabs", "win.tab-overview")
         menu_model.append_section(None, win_section)
 
         split_section = Gio.Menu()
@@ -94,6 +84,7 @@ class TerminalWindow(Adw.ApplicationWindow):
         win_actions = {
             "new-window":  lambda: self.get_application().new_window(),
             "new-tab":     lambda: self._new_tab(),
+            "tab-overview": lambda: self._toggle_overview(),
             "split-auto":  lambda: self._active_panes().split_auto(),
             "split-right": lambda: self._active_panes().split_active(Gtk.Orientation.HORIZONTAL),
             "split-down":  lambda: self._active_panes().split_active(Gtk.Orientation.VERTICAL),
@@ -113,69 +104,134 @@ class TerminalWindow(Adw.ApplicationWindow):
         menu_btn.set_menu_model(menu_model)
         header.pack_end(menu_btn)
 
-        self._notebook = Gtk.Notebook()
-        self._notebook.set_scrollable(True)
-        self._notebook.set_show_border(False)
-        self._notebook.connect("switch-page", self._on_switch_page)
+        self._tabs = Adw.TabView()
+        self._tabs.connect("notify::selected-page", self._on_page_selected)
+        self._tabs.connect("close-page", self._on_close_page)
+        self._tabs.connect("page-attached", self._on_page_attached)
+        self._tabs.connect("page-detached", self._on_page_detached)
+        self._tabs.connect("create-window", self._on_create_window)
+
+        # Adw.TabBar draws the tabs themselves (label, close button, reordering,
+        # drag-and-drop) and hides itself while there is only one page, which is
+        # why nothing here sets a tab label widget or toggles the strip.
+        tab_bar = Adw.TabBar(view=self._tabs)
+
+        # Shows the tab count, and opens the overview through the action group
+        # Adw.TabOverview installs on the widgets below it.
+        header.pack_end(Adw.TabButton(view=self._tabs, action_name="overview.open"))
 
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(header)
-        toolbar_view.set_content(self._notebook)
-        self.set_content(toolbar_view)
+        toolbar_view.add_top_bar(tab_bar)
+        toolbar_view.set_content(self._tabs)
+
+        # libadwaita expects the overview to be the window's direct child, with
+        # everything else hanging off it as its child.
+        self._overview = Adw.TabOverview(
+            view=self._tabs,
+            child=toolbar_view,
+            enable_new_tab=True,
+            enable_search=True,
+        )
+        self._overview.connect("create-tab", lambda _o: self._new_tab())
+        self.set_content(self._overview)
 
         self._tab_count = 0
-        self._new_tab()
+        self._pane_handlers: dict[PaneManager, list[int]] = {}
+        if initial_tab:
+            self._new_tab()
 
         self._setup_window_actions()
         self._setup_key_handler()
 
     # ── Tab management ────────────────────────────────────────────────────────
 
-    def _new_tab(self) -> None:
+    def _new_tab(self) -> Adw.TabPage:
+        """Open a tab and return its page — the overview's "New Tab" button
+        takes the page as the return value of its `create-tab` handler."""
         self._tab_count += 1
-        title = f"Terminal {self._tab_count}"
 
         panes = PaneManager()
-        panes.connect("all-closed",    self._on_tab_all_closed)
-        panes.connect("new-tab",       lambda _p: self._new_tab())
-        panes.connect("new-window",    lambda _p: self.get_application().new_window())
-        panes.connect("title-changed", self._on_panes_title_changed)
+        panes.default_title = f"Terminal {self._tab_count}"
 
-        label = TabLabel(title)
-        label.connect("close-clicked", lambda _lbl, p=panes: self._close_tab_for_panes(p))
-
-        idx = self._notebook.append_page(panes, label)
-        self._notebook.set_tab_reorderable(panes, True)
-        self._notebook.set_current_page(idx)
-        self._update_tab_bar_visibility()
+        # Appending wires the pane signals up — see _on_page_attached.
+        page = self._tabs.append(panes)
+        self._set_page_title(page, panes.default_title)
+        self._tabs.set_selected_page(page)
         self._update_window_title()
         panes.focus_active()
+        return page
 
-    def _close_tab_for_panes(self, panes: PaneManager) -> None:
-        idx = self._notebook.page_num(panes)
-        if idx == -1:
-            return
-        self._notebook.remove_page(idx)
-        if self._notebook.get_n_pages() == 0:
-            self.get_application().quit()
-        else:
-            self._update_tab_bar_visibility()
-            self._update_window_title()
+    def _on_page_attached(self, _view, page: Adw.TabPage, _pos: int) -> None:
+        """Connect a tab's PaneManager to *this* window.
+
+        Tabs are wired here rather than in `_new_tab` because a tab can also
+        arrive by being dragged in from another window, and the handlers it
+        carried over pointed at that one.
+        """
+        panes = page.get_child()
+        self._pane_handlers[panes] = [
+            panes.connect("all-closed",    self._on_tab_all_closed),
+            panes.connect("new-tab",       lambda _p: self._new_tab()),
+            panes.connect("new-window",    lambda _p: self.get_application().new_window()),
+            panes.connect("title-changed", self._on_panes_title_changed),
+        ]
+
+    def _on_page_detached(self, view: Adw.TabView, page: Adw.TabPage, _pos: int) -> None:
+        panes = page.get_child()
+        for handler in self._pane_handlers.pop(panes, []):
+            panes.disconnect(handler)
+        if view.get_n_pages() == 0:
+            # Don't tear the window down from in here: the page may be in the
+            # middle of a transfer into another window, and destroying this
+            # widget tree now would take it with us. Let the move land first.
+            GLib.idle_add(self._close_if_empty)
+
+    def _close_if_empty(self) -> bool:
+        if self._tabs.get_n_pages() == 0:
+            self.close()
+        return GLib.SOURCE_REMOVE
+
+    def _on_create_window(self, _view) -> Adw.TabView:
+        """A tab dropped onto the desktop: hand back the tab view of a new,
+        empty window for libadwaita to move the page into."""
+        return self.get_application().new_window(with_tab=False)._tabs
 
     def _on_tab_all_closed(self, panes: PaneManager) -> None:
-        self._close_tab_for_panes(panes)
+        if (page := self._tabs.get_page(panes)) is not None:
+            self._tabs.close_page(page)
 
-    def _on_switch_page(self, _nb, page, _idx) -> None:
-        if isinstance(page, PaneManager):
-            self._update_window_title(page)
-            page.focus_active()
+    def _on_close_page(self, view: Adw.TabView, page: Adw.TabPage) -> bool:
+        """Close *page* — from the tab's × button or from `close_page` above.
+
+        Taking the signal (returning True) means finishing the close ourselves;
+        doing it synchronously is fine since nothing here asks the user first.
+        The window closes with its last tab, via `_on_page_detached`.
+        """
+        view.close_page_finish(page, True)
+        self._update_window_title()
+        return True
+
+    def _toggle_overview(self) -> None:
+        self._overview.set_open(not self._overview.get_open())
+
+    def _on_page_selected(self, _view, _pspec) -> None:
+        if panes := self._active_panes():
+            self._update_window_title(panes)
+            panes.focus_active()
 
     # ── Titles ────────────────────────────────────────────────────────────────
 
+    def _set_page_title(self, page: Adw.TabPage, title: str) -> None:
+        page.set_title(title)
+        # The tooltip carries the full title for tabs the strip has ellipsized.
+        # It is parsed as markup, so a shell-set title has to be escaped.
+        page.set_tooltip(GLib.markup_escape_text(title))
+
     def _on_panes_title_changed(self, panes: PaneManager) -> None:
-        label = self._notebook.get_tab_label(panes)
-        if isinstance(label, TabLabel):
-            label.set_title(panes.title)
+        page = self._tabs.get_page(panes)
+        if page is not None:
+            self._set_page_title(page, panes.title or panes.default_title)
         if panes is self._active_panes():
             self._update_window_title(panes)
 
@@ -186,10 +242,8 @@ class TerminalWindow(Adw.ApplicationWindow):
         self.set_title(title or "Terminal")
 
     def _active_panes(self) -> PaneManager | None:
-        return self._notebook.get_nth_page(self._notebook.get_current_page())
-
-    def _update_tab_bar_visibility(self) -> None:
-        self._notebook.set_show_tabs(self._notebook.get_n_pages() > 1)
+        page = self._tabs.get_selected_page()
+        return page.get_child() if page is not None else None
 
     def _open_preferences(self) -> None:
         PreferencesWindow(transient_for=self).present()
@@ -217,8 +271,9 @@ class TerminalWindow(Adw.ApplicationWindow):
         add("maximize-pane", with_panes(lambda p: p.toggle_maximize_active()))
         add("rotate-cw",   with_panes(lambda p: p.rotate_cw()))
         add("rotate-ccw",  with_panes(lambda p: p.rotate_ccw()))
-        add("prev-tab",    self._notebook.prev_page)
-        add("next-tab",    self._notebook.next_page)
+        add("prev-tab",    self._tabs.select_previous_page)
+        add("next-tab",    self._tabs.select_next_page)
+        add("tab-overview", self._toggle_overview)
 
         def _copy():
             if (p := self._active_panes()) and p.active:
@@ -257,8 +312,9 @@ class TerminalWindow(Adw.ApplicationWindow):
             "split-right": lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.HORIZONTAL),
             "split-down":  lambda: (p := self._active_panes()) and p.split_active(Gtk.Orientation.VERTICAL),
             "maximize-pane": lambda: (p := self._active_panes()) and p.toggle_maximize_active(),
-            "prev-tab":    self._notebook.prev_page,
-            "next-tab":    self._notebook.next_page,
+            "prev-tab":    self._tabs.select_previous_page,
+            "next-tab":    self._tabs.select_next_page,
+            "tab-overview": self._toggle_overview,
             "rotate-cw":   lambda: (p := self._active_panes()) and p.rotate_cw(),
             "rotate-ccw":  lambda: (p := self._active_panes()) and p.rotate_ccw(),
         }
@@ -267,8 +323,10 @@ class TerminalWindow(Adw.ApplicationWindow):
             if not accel or name not in actions:
                 continue
             *_, keyval, mods = Gtk.accelerator_parse(accel)
-            if keyval:
-                table[(mods, Gdk.keyval_to_lower(keyval))] = actions[name]
+            if not keyval:
+                continue
+            for kv in _accel_keyvals(keyval, mods):
+                table[(mods, Gdk.keyval_to_lower(kv))] = actions[name]
         return table
 
     def _on_key_pressed(self, _ctrl, keyval, _keycode, state) -> bool:

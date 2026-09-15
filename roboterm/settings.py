@@ -36,6 +36,7 @@ def _default_keybindings() -> dict:
             "maximize-pane": "<Meta>z",
             "prev-tab":      "<Meta><Shift>bracketleft",
             "next-tab":      "<Meta><Shift>bracketright",
+            "tab-overview":  "<Meta><Shift>backslash",
             "rotate-cw":     "<Meta><Alt>bracketright",
             "rotate-ccw":    "<Meta><Alt>bracketleft",
         }
@@ -51,6 +52,7 @@ def _default_keybindings() -> dict:
         "maximize-pane": "<Control><Shift>z",
         "prev-tab":      "<Control>Page_Up",
         "next-tab":      "<Control>Page_Down",
+        "tab-overview":  "<Control><Shift>backslash",
         "rotate-cw":     "<Control><Shift>bracketright",
         "rotate-ccw":    "<Control><Shift>bracketleft",
     }

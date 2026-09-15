@@ -4,7 +4,8 @@ A GTK4/VTE terminal emulator written in Python, with tab support, pane splitting
 
 ## Features
 
-- Multiple tabs with drag-to-reorder
+- Multiple tabs, draggable to reorder them or to pull one out into its own window
+- Tab overview: a header button opens a searchable grid of the open tabs
 - Horizontal and vertical pane splitting
 - Pane rotation
 - Maximize/restore the active pane (zoom one pane to fill the window)
@@ -125,6 +126,7 @@ Defaults below; every shortcut except Copy/Paste can be rebound from the Prefere
 | Rotate panes counter-clockwise                   | `Cmd+Option+[`   | `Ctrl+Shift+[`    |
 | Previous tab                                     | `Cmd+Shift+[`    | `Ctrl+Page Up`    |
 | Next tab                                         | `Cmd+Shift+]`    | `Ctrl+Page Down`  |
+| Show all tabs (overview)                         | `Cmd+Shift+\`    | `Ctrl+Shift+\`    |
 
 Right-click any pane for a context menu with the same split and close actions.
 
@@ -138,7 +140,7 @@ roboterm/
   terminal.py          TerminalWidget (VTE + copy/paste + context menu)
   panes.py             PaneFrame, PaneManager
   preferences.py       PreferencesWindow
-  window.py            TabLabel, TerminalWindow
+  window.py            TerminalWindow
   app.py               TerminalApp
 tests/
   unit/                mocked-gi unit tests (any Python, no display needed)

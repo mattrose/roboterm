@@ -29,6 +29,7 @@ _ACTIONS = [
     ("maximize-pane", "Toggle Maximize"),
     ("prev-tab",      "Previous Tab"),
     ("next-tab",      "Next Tab"),
+    ("tab-overview",  "Show All Tabs"),
     ("rotate-cw",     "Rotate Clockwise"),
     ("rotate-ccw",    "Rotate Counter-Clockwise"),
 ]

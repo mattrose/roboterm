@@ -102,6 +102,11 @@ class PaneManager(Gtk.Box):
         self.set_vexpand(True)
         self.set_hexpand(True)
 
+        # The tab name its window gave it, shown while no pane reports a title.
+        # It lives here rather than in the window so that it survives the tab
+        # being dragged into another window.
+        self.default_title = ""
+
         self._active: TerminalWidget | None = None
         # (detached tree root, owning Paned, "start"|"end", maximized frame)
         self._maximized: tuple | None = None

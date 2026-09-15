@@ -38,7 +38,7 @@ from tests.ui.helpers import WindowHelper, wait_for_named_window
 pytestmark = pytest.mark.ui
 
 HEADERBAR_H = 47   # px — Adwaita CSD header bar height
-TAB_BAR_H   = 35   # px — Gtk.Notebook tab strip height
+TAB_BAR_H   = 35   # px — Adw.TabBar tab strip height
 
 
 # ── Pixel helpers ─────────────────────────────────────────────────────────────
