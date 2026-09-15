@@ -151,6 +151,32 @@ class TerminalApp(Adw.Application):
             ".terminal-title-label {"
             "  font-size: 0.75em;"
             "}"
+            # Tabs as discrete buttons rather than Adwaita's flush strip: each
+            # rounded and outlined, with a gap between them, the selected one
+            # filled harder. Every color is alpha-on-currentColor, so the whole
+            # thing inverts with the theme instead of being pinned to one.
+            # Two things to know before editing these selectors: `tab` sits
+            # under a `tabboxchild` wrapper inside `tabbox` (hence a descendant
+            # selector, not a child one), and the selected tab carries
+            # `:selected` — not the `:checked` a button-like node would.
+            "tabbar tab {"
+            "  margin: 4px 2px;"
+            "  border-radius: 6px;"
+            "  border: 1px solid alpha(currentColor, 0.15);"
+            "  background-color: alpha(currentColor, 0.05);"
+            "}"
+            "tabbar tab:hover {"
+            "  background-color: alpha(currentColor, 0.12);"
+            "}"
+            "tabbar tab:selected {"
+            "  background-color: alpha(currentColor, 0.18);"
+            "  border-color: alpha(currentColor, 0.5);"
+            "  box-shadow: 0 1px 2px alpha(black, 0.15);"
+            "}"
+            # The strip's own separators only make sense between flush tabs.
+            "tabbar tabbox > separator {"
+            "  background-color: transparent;"
+            "}"
         )
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(),
