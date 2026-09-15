@@ -162,7 +162,7 @@ class TerminalApp(Adw.Application):
             "tabbar tab {"
             "  margin: 4px 2px;"
             "  border-radius: 6px;"
-            "  border: 1px solid alpha(currentColor, 0.15);"
+            # "  border: 1px solid alpha(currentColor, 0.15);"
             "  background-color: alpha(currentColor, 0.05);"
             "}"
             "tabbar tab:hover {"
